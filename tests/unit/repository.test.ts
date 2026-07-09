@@ -104,6 +104,23 @@ describe("getAllSessions", () => {
   });
 });
 
+describe("getAllSessions: ファイルサイズ上限", () => {
+  it("MAX_FILE_SIZE_MB を超えるファイルはスキップして警告する", async () => {
+    process.env.MAX_FILE_SIZE_MB = "1";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      writeSessionFile("-proj-a", UUID_A, basicJsonl);
+      writeSessionFile("-proj-a", UUID_B, "x".repeat(2 * 1024 * 1024));
+
+      const sessions = await getAllSessions();
+      expect(sessions.map((s) => s.sessionId)).toEqual([UUID_A]);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      delete process.env.MAX_FILE_SIZE_MB;
+    }
+  });
+});
+
 describe("getSession", () => {
   it("sessionId で1件取得する", async () => {
     writeSessionFile("-proj-a", UUID_A, basicJsonl);
