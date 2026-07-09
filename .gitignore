@@ -27,8 +27,9 @@
 # serena mcp
 /.serena/
 
-# local-only planning doc (not published)
+# local-only planning docs (not published)
 /IMPLEMENTATION_PLAN.md
+/DETAILED_DESIGN.md
 
 # debug
 npm-debug.log*

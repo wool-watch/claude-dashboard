@@ -68,5 +68,3 @@ npx tsc --noEmit     # 型チェック
 データレイヤー（`src/lib/`）は Next.js 非依存の純関数で構成され、
 `tests/unit/` に1対1対応のテストがあります。fixture（`tests/fixtures/`）は
 実データを含まない匿名化した合成 JSONL です。
-
-設計文書: [DETAILED_DESIGN.md](./DETAILED_DESIGN.md)
