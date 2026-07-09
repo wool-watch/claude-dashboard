@@ -61,6 +61,12 @@ async function scan(): Promise<SessionDetail[]> {
       } catch {
         continue; // 走査中に消えたファイル
       }
+      if (st.size > config.maxFileSizeBytes) {
+        console.warn(
+          `skipping oversized session file (${st.size} bytes > ${config.maxFileSizeBytes}): ${filePath}`,
+        );
+        continue;
+      }
       livingPaths.add(filePath);
       const session = cache.getOrParse(filePath, st, () => {
         const { records, skippedLines } = parseJsonlLines(
