@@ -1,0 +1,7 @@
+{"type":"user","promptId":"p1","message":{"role":"user","content":"正常な行"},"uuid":"u1","parentUuid":null,"timestamp":"2026-07-01T00:00:00.000Z","isSidechain":false}
+{broken json line
+
+"裸の文字列はオブジェクトでないのでスキップ"
+{"type":"assistant","requestId":"r1","message":{"model":"claude-opus-4-8","id":"m1","usage":{"input_tokens":10,"output_tokens":5}},"uuid":"u2","parentUuid":"u1","timestamp":"2026-07-01T00:00:05.000Z","isSidechain":false}
+
+{"unclosed": "object"

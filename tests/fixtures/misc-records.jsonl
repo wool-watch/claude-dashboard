@@ -1,0 +1,10 @@
+{"type":"ai-title","aiTitle":"最初のタイトル","sessionId":"s-misc"}
+{"type":"mode","mode":"default"}
+{"type":"file-history-snapshot","snapshot":{}}
+{"type":"attachment","attachment":{}}
+{"type":"queue-operation","operation":"enqueue"}
+{"type":"user","promptId":"pX","message":{"role":"user","content":"<local-command-caveat>Caveat: ローカルコマンド実行ログ</local-command-caveat>"},"uuid":"mu1","parentUuid":null,"timestamp":"2026-07-01T00:00:00.000Z","cwd":"/home/test/misc","isSidechain":false}
+{"type":"user","promptId":"p1","message":{"role":"user","content":"正規の質問"},"uuid":"mu2","parentUuid":null,"timestamp":"2026-07-01T00:00:10.000Z","cwd":"/home/test/misc","isSidechain":false}
+{"type":"assistant","requestId":"r1","message":{"model":"claude-opus-4-8","id":"mm1","content":[{"type":"text","text":"回答"}],"usage":{"input_tokens":100,"output_tokens":50}},"uuid":"mu3","parentUuid":"mu2","timestamp":"2026-07-01T00:00:20.000Z","cwd":"/home/test/misc","isSidechain":false}
+{"type":"system","subtype":"turn_duration","durationMs":5000,"messageCount":2,"timestamp":"2026-07-01T00:00:21.000Z","parentUuid":"mu3","uuid":"ms1","isMeta":false}
+{"type":"ai-title","aiTitle":"後勝ちタイトル","sessionId":"s-misc"}
