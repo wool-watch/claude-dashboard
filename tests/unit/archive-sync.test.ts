@@ -68,7 +68,10 @@ describe("syncArchive: コピー", () => {
     expect(result.errors).toBe(0);
     const arch = archivePath("-proj-a", UUID_A);
     expect(readFileSync(arch, "utf8")).toBe("live content\n");
-    expect(statSync(arch).mtimeMs).toBe(statSync(livePath).mtimeMs);
+    // utimes はサブms精度を保存できないため ms 単位で比較する
+    expect(
+      Math.abs(statSync(arch).mtimeMs - statSync(livePath).mtimeMs),
+    ).toBeLessThan(2);
   });
 
   it("変更が無ければ2回目はコピーしない", async () => {

@@ -7,7 +7,7 @@ import { parseJsonlLines } from "@/lib/parser/jsonl";
 import { getGlobalCache } from "@/lib/store/cache";
 import type { SessionDetail } from "@/lib/types";
 
-const SESSION_FILE_RE = /^[0-9a-f-]{36}\.jsonl$/i;
+export const SESSION_FILE_RE = /^[0-9a-f-]{36}\.jsonl$/i;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 // 同一レンダリング内の複数APIから叩かれても走査は1回に共有する
