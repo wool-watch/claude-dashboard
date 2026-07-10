@@ -44,7 +44,7 @@ export default function ProjectsPage() {
                 >
                   <td className="py-2 pr-3">
                     <Link
-                      href={`/sessions?project=${encodeURIComponent(p.projectId)}`}
+                      href={`/projects/${encodeURIComponent(p.projectId)}`}
                       className="hover:underline"
                       title={p.projectPath}
                     >

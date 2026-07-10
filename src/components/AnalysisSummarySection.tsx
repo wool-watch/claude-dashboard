@@ -170,21 +170,28 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
   );
 }
 
-export function AnalysisSummarySection() {
-  const summary = useApi<AnalysisSummaryDto>("/api/analysis/summary");
+export function AnalysisSummarySection({ projectId }: { projectId?: string }) {
+  const url =
+    projectId === undefined
+      ? "/api/analysis/summary"
+      : `/api/analysis/summary?project=${encodeURIComponent(projectId)}`;
+  const summary = useApi<AnalysisSummaryDto>(url);
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <Section
       title="振り返りサマリー（AI分析の傾向）"
       action={
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
-        >
-          優先課題を分析
-        </button>
+        // 優先課題分析の保存先はグローバル1件のためプロジェクト指定時は非表示
+        projectId === undefined ? (
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
+          >
+            優先課題を分析
+          </button>
+        ) : undefined
       }
     >
       {summary.error !== null && <ErrorNote message={summary.error} />}
@@ -193,10 +200,12 @@ export function AnalysisSummarySection() {
       ) : (
         summary.data !== null && <SummaryBody dto={summary.data} />
       )}
-      <PriorityAnalysisModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-      />
+      {projectId === undefined && (
+        <PriorityAnalysisModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
     </Section>
   );
 }
