@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { SettingsMenu } from "@/components/SettingsMenu";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import "./globals.css";
 
@@ -56,8 +57,9 @@ export default function RootLayout({
                 {item.label}
               </Link>
             ))}
-            <span className="ml-auto">
+            <span className="ml-auto flex items-center gap-2">
               <ThemeToggle />
+              <SettingsMenu />
             </span>
           </nav>
         </header>
