@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -14,7 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnalysisError, type RunOutcome } from "@/lib/analysis/runner";
 import {
   analyzeSession,
+  getAnalysisStatusMap,
   getAnalysisWithStaleness,
+  isAnalysisInflight,
 } from "@/lib/analysis/service";
 import { getGlobalCache } from "@/lib/store/cache";
 
@@ -201,5 +204,84 @@ describe("getAnalysisWithStaleness", () => {
 
   it("セッションも分析も無ければ null", async () => {
     expect(await getAnalysisWithStaleness(UUID_A)).toBeNull();
+  });
+});
+
+describe("getAnalysisStatusMap / isAnalysisInflight", () => {
+  it("分析が無ければ空の Map", async () => {
+    writeLive(UUID_A, basicJsonl);
+    expect((await getAnalysisStatusMap()).size).toBe(0);
+  });
+
+  it("分析済み・未変更は analyzed", async () => {
+    writeLive(UUID_A, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
+  });
+
+  it("分析後にファイルが変わると stale", async () => {
+    const filePath = writeLive(UUID_A, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+
+    writeFileSync(filePath, `${basicJsonl}\n`);
+    const future = new Date(Date.now() + 5000);
+    utimesSync(filePath, future, future);
+
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("stale");
+  });
+
+  it("セッションファイルが消滅したら stale", async () => {
+    const filePath = writeLive(UUID_A, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+    rmSync(filePath);
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("stale");
+  });
+
+  it("archive 側へ移動したセッションも解決できる", async () => {
+    const filePath = writeLive(UUID_A, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+
+    const archiveDir = path.join(baseDir, "archive", "-proj-a");
+    mkdirSync(archiveDir, { recursive: true });
+    renameSync(filePath, path.join(archiveDir, `${UUID_A}.jsonl`));
+
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
+  });
+
+  it("分析実行中は analyzing が最優先、未分析セッションも analyzing", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeLive(UUID_B, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome }); // A は分析済みにする
+
+    let releaseA: (v: RunOutcome) => void = () => {};
+    let releaseB: (v: RunOutcome) => void = () => {};
+    const runA = vi.fn(
+      () =>
+        new Promise<RunOutcome>((resolve) => {
+          releaseA = resolve;
+        }),
+    );
+    const runB = vi.fn(
+      () =>
+        new Promise<RunOutcome>((resolve) => {
+          releaseB = resolve;
+        }),
+    );
+    const pendingA = analyzeSession(UUID_A, { run: runA });
+    const pendingB = analyzeSession(UUID_B, { run: runB });
+    await vi.waitFor(() => expect(runA).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(runB).toHaveBeenCalledOnce());
+
+    expect(isAnalysisInflight(UUID_A)).toBe(true);
+    const map = await getAnalysisStatusMap();
+    expect(map.get(UUID_A)).toBe("analyzing");
+    expect(map.get(UUID_B)).toBe("analyzing");
+
+    releaseA(outcome);
+    releaseB(outcome);
+    await Promise.all([pendingA, pendingB]);
+
+    expect(isAnalysisInflight(UUID_A)).toBe(false);
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
   });
 });

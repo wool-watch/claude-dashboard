@@ -12,10 +12,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getSummary } from "@/app/api/analysis/summary/route";
 import { GET as getAnalysis } from "@/app/api/sessions/[id]/analysis/route";
 import { POST as postAnalyze } from "@/app/api/sessions/[id]/analyze/route";
+import type { RunOutcome } from "@/lib/analysis/runner";
+import { analyzeSession } from "@/lib/analysis/service";
 import { getGlobalCache } from "@/lib/store/cache";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -159,7 +161,38 @@ describe("GET /api/sessions/[id]/analysis", () => {
     writeLive(UUID_A, basicJsonl);
     const res = await getAnalysis(req(`/api/sessions/${UUID_A}/analysis`), ctx(UUID_A));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ analysis: null, isStale: false });
+    expect(await res.json()).toEqual({
+      analysis: null,
+      isStale: false,
+      isAnalyzing: false,
+    });
+  });
+
+  it("分析実行中は isAnalyzing true、完了後は false", async () => {
+    writeLive(UUID_A, basicJsonl);
+    let release: (v: RunOutcome) => void = () => {};
+    const run = vi.fn(
+      () =>
+        new Promise<RunOutcome>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = analyzeSession(UUID_A, { run });
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+
+    const during = await getAnalysis(req(`/api/sessions/${UUID_A}/analysis`), ctx(UUID_A));
+    expect((await during.json()).isAnalyzing).toBe(true);
+
+    release({
+      result: validResult,
+      costUSD: 0.01,
+    } as RunOutcome);
+    await pending;
+
+    const after = await getAnalysis(req(`/api/sessions/${UUID_A}/analysis`), ctx(UUID_A));
+    const afterBody = await after.json();
+    expect(afterBody.isAnalyzing).toBe(false);
+    expect(afterBody.analysis.sessionId).toBe(UUID_A);
   });
 
   it("分析済みは保存値、追記後は isStale true", async () => {
