@@ -29,6 +29,43 @@ export async function getSession(
   return sessions.find((s) => s.sessionId === sessionId) ?? null;
 }
 
+export interface SessionFileRef {
+  filePath: string;
+  projectId: string;
+  mtimeMs: number;
+  size: number;
+}
+
+/**
+ * sessionId から生JSONLのファイルパスと stat を解決する（ライブ優先→アーカイブ）。
+ * 全ファイルのパースは行わず、readdir + stat 直撃のみ。
+ */
+export async function getSessionFileRef(
+  sessionId: string,
+): Promise<SessionFileRef | null> {
+  if (!UUID_RE.test(sessionId)) return null;
+  const config = getConfig();
+  for (const rootDir of [config.dataDir, config.archiveDir]) {
+    let projectIds: string[];
+    try {
+      const dirents = await fs.readdir(rootDir, { withFileTypes: true });
+      projectIds = dirents.filter((d) => d.isDirectory()).map((d) => d.name);
+    } catch {
+      continue;
+    }
+    for (const projectId of projectIds) {
+      const filePath = path.join(rootDir, projectId, `${sessionId}.jsonl`);
+      try {
+        const st = await fs.stat(filePath);
+        return { filePath, projectId, mtimeMs: st.mtimeMs, size: st.size };
+      } catch {
+        // このプロジェクトには無い
+      }
+    }
+  }
+  return null;
+}
+
 async function scan(): Promise<SessionDetail[]> {
   const config = getConfig();
   const cache = getGlobalCache();
