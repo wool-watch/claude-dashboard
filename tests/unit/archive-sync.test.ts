@@ -113,7 +113,12 @@ describe("syncArchive: コピー", () => {
   it("ライブディレクトリが無くてもエラーにならない", async () => {
     rmSync(liveDir, { recursive: true, force: true });
     const result = await sync();
-    expect(result).toEqual({ copied: 0, pruned: 0, errors: 0 });
+    expect(result).toEqual({
+      copied: 0,
+      pruned: 0,
+      prunedAnalyses: 0,
+      errors: 0,
+    });
   });
 
   it("ライブから削除されたファイルはアーカイブに残る", async () => {
@@ -206,6 +211,76 @@ describe("syncArchive: プルーニング", () => {
     await sync();
 
     expect(existsSync(tmpFile)).toBe(false);
+  });
+});
+
+describe("syncArchive: 分析結果の孤児クリーンアップ", () => {
+  let analysisDir: string;
+
+  beforeEach(() => {
+    analysisDir = path.join(path.dirname(archiveDir), "analysis");
+    process.env.CLAUDE_ANALYSIS_DIR = analysisDir;
+  });
+
+  afterEach(() => {
+    delete process.env.CLAUDE_ANALYSIS_DIR;
+  });
+
+  const writeAnalysisFile = (uuid: string) => {
+    mkdirSync(analysisDir, { recursive: true });
+    const p = path.join(analysisDir, `${uuid}.json`);
+    writeFileSync(p, JSON.stringify({ sessionId: uuid }));
+    return p;
+  };
+
+  it("セッションがライブ・アーカイブ双方に無ければ分析JSONを削除する", async () => {
+    const orphan = writeAnalysisFile(UUID_A);
+    const result = await sync();
+    expect(result.prunedAnalyses).toBe(1);
+    expect(existsSync(orphan)).toBe(false);
+  });
+
+  it("ライブに存在するセッションの分析は保持する", async () => {
+    writeLive("-proj-a", UUID_A, "content\n");
+    const kept = writeAnalysisFile(UUID_A);
+    const result = await sync();
+    expect(result.prunedAnalyses).toBe(0);
+    expect(existsSync(kept)).toBe(true);
+  });
+
+  it("アーカイブのみに存在するセッションの分析も保持する", async () => {
+    const dir = path.join(archiveDir, "-proj-a");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, `${UUID_A}.jsonl`), "archived\n");
+    const kept = writeAnalysisFile(UUID_A);
+    const result = await sync();
+    expect(result.prunedAnalyses).toBe(0);
+    expect(existsSync(kept)).toBe(true);
+  });
+
+  it("保持期間切れでアーカイブから消えた同じ実行で分析も消える", async () => {
+    const dir = path.join(archiveDir, "-proj-a");
+    mkdirSync(dir, { recursive: true });
+    const archived = path.join(dir, `${UUID_A}.jsonl`);
+    writeFileSync(archived, "old\n");
+    const past = new Date(Date.now() - 40 * DAY_MS);
+    utimesSync(archived, past, past);
+    const analysis = writeAnalysisFile(UUID_A);
+
+    const result = await sync(30);
+
+    expect(existsSync(archived)).toBe(false);
+    expect(existsSync(analysis)).toBe(false);
+    expect(result.pruned).toBe(1);
+    expect(result.prunedAnalyses).toBe(1);
+  });
+
+  it("無関係なファイル名は無視する", async () => {
+    mkdirSync(analysisDir, { recursive: true });
+    const other = path.join(analysisDir, "notes.json");
+    writeFileSync(other, "{}");
+    await sync();
+    expect(existsSync(other)).toBe(true);
   });
 });
 
