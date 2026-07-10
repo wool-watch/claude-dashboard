@@ -1,3 +1,5 @@
+import type { SessionAnalysisStatus } from "@/lib/analysis/types";
+
 // ============ 生レコード（型ガード通過後） ============
 
 /** message.usage の生形状（すべて省略されうる） */
@@ -133,6 +135,11 @@ export interface SessionDetail extends SessionSummary {
   turns: Turn[];
   /** パース不能行数（デバッグ表示用） */
   skippedLines: number;
+}
+
+/** GET /api/sessions の1行分（分析ステータス付き） */
+export interface SessionListItem extends SessionSummary {
+  analysisStatus: SessionAnalysisStatus;
 }
 
 // ============ 集計結果型（= APIレスポンス型） ============

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
+import { getAnalysisStatusMap } from "@/lib/analysis/service";
 import { ApiQueryError } from "@/lib/api/query";
 import { getAllSessions } from "@/lib/store/repository";
 import type { SessionDetail, SessionSummary } from "@/lib/types";
@@ -30,7 +31,11 @@ export async function GET(req: NextRequest) {
       throw new ApiQueryError(`invalid limit: ${limitRaw}`);
     }
 
-    let sessions = await getAllSessions();
+    const [allSessions, statusMap] = await Promise.all([
+      getAllSessions(),
+      getAnalysisStatusMap(),
+    ]);
+    let sessions = allSessions;
     if (project !== null) {
       sessions = sessions.filter((s) => s.projectId === project);
     }
@@ -41,7 +46,10 @@ export async function GET(req: NextRequest) {
         : sign * a.lastAt.localeCompare(b.lastAt),
     );
     return NextResponse.json({
-      sessions: sorted.slice(0, limit).map(toSummary),
+      sessions: sorted.slice(0, limit).map((s) => ({
+        ...toSummary(s),
+        analysisStatus: statusMap.get(s.sessionId) ?? "none",
+      })),
     });
   } catch (e) {
     return errorResponse(e);

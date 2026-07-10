@@ -23,6 +23,9 @@ const BADGE_TONES = {
     "bg-amber-500/15 text-amber-700 dark:bg-amber-400/15 dark:text-amber-300",
   purple:
     "bg-purple-500/15 text-purple-700 dark:bg-purple-400/15 dark:text-purple-300",
+  green:
+    "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300",
+  blue: "bg-sky-500/15 text-sky-700 dark:bg-sky-400/15 dark:text-sky-300",
 } as const;
 
 export function Badge({

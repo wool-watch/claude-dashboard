@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import type { RunOutcome } from "@/lib/analysis/runner";
 import { AnalysisError, runClaudeAnalysis } from "@/lib/analysis/runner";
 import { readAllAnalyses, readAnalysis, writeAnalysis } from "@/lib/analysis/store";
 import { buildTranscript } from "@/lib/analysis/transcript";
-import type { StoredAnalysis } from "@/lib/analysis/types";
+import type { SessionAnalysisStatus, StoredAnalysis } from "@/lib/analysis/types";
 import type { DashboardConfig } from "@/lib/config";
 import { getConfig } from "@/lib/config";
 import type { AnalysisModel } from "@/lib/settings/settings";
@@ -136,4 +138,64 @@ export async function getAnalysisWithStaleness(
 /** ダッシュボード集計用: 保存済み分析の全件読出し */
 export async function getAllAnalyses(): Promise<StoredAnalysis[]> {
   return readAllAnalyses(getConfig().analysisDir);
+}
+
+/** 指定セッションの分析が実行中か */
+export function isAnalysisInflight(sessionId: string): boolean {
+  return getInflightMap().has(sessionId);
+}
+
+/** 実行中の分析セッションID一覧 */
+export function getInflightSessionIds(): string[] {
+  return [...getInflightMap().keys()];
+}
+
+/**
+ * 保存済み分析1件の鮮度を判定する。
+ * StoredAnalysis の projectId から直接パスを組み立てて stat するので、
+ * セッション総数に依存せず分析件数分の I/O で済む（live → archive の順に解決）。
+ */
+async function statusOfAnalysis(
+  analysis: StoredAnalysis,
+  config: DashboardConfig,
+): Promise<SessionAnalysisStatus> {
+  for (const rootDir of [config.dataDir, config.archiveDir]) {
+    const filePath = path.join(
+      rootDir,
+      analysis.projectId,
+      `${analysis.sessionId}.jsonl`,
+    );
+    try {
+      const st = await stat(filePath);
+      const changed =
+        Math.abs(st.mtimeMs - analysis.sourceMtimeMs) >= 2 ||
+        st.size !== analysis.sourceSize;
+      return changed ? "stale" : "analyzed";
+    } catch {
+      // このルートには無い
+    }
+  }
+  return "stale"; // セッションファイル消滅
+}
+
+/**
+ * セッション一覧用: sessionId → 分析ステータスの Map。
+ * 実行中（in-flight）は保存済み分析の有無にかかわらず "analyzing" を優先する。
+ * Map に無いセッションは未分析（"none"）として扱う。
+ */
+export async function getAnalysisStatusMap(): Promise<
+  Map<string, SessionAnalysisStatus>
+> {
+  const config = getConfig();
+  const analyses = await readAllAnalyses(config.analysisDir);
+  const entries = await Promise.all(
+    analyses.map(
+      async (a) => [a.sessionId, await statusOfAnalysis(a, config)] as const,
+    ),
+  );
+  const map = new Map<string, SessionAnalysisStatus>(entries);
+  for (const sessionId of getInflightMap().keys()) {
+    map.set(sessionId, "analyzing");
+  }
+  return map;
 }

@@ -9,7 +9,8 @@ import {
   formatUSD,
 } from "@/components/format";
 import { Badge, EmptyState } from "@/components/ui";
-import { type SessionSummary, totalTokens } from "@/lib/types";
+import type { SessionAnalysisStatus } from "@/lib/analysis/types";
+import { type SessionListItem, totalTokens } from "@/lib/types";
 
 type SortKey = "lastAt" | "cost" | "turns";
 
@@ -21,7 +22,22 @@ const displayNameOf = (projectPath: string): string => {
 /** モデルIDの表示短縮: claude-opus-4-8 → opus-4-8 */
 const shortModel = (model: string): string => model.replace(/^claude-/, "");
 
-export function SessionTable({ sessions }: { sessions: SessionSummary[] }) {
+function AnalysisStatusBadge({ status }: { status: SessionAnalysisStatus }) {
+  switch (status) {
+    case "analyzing":
+      return <Badge tone="blue">分析中</Badge>;
+    case "stale":
+      return <Badge tone="amber">再分析推奨</Badge>;
+    case "analyzed":
+      return <Badge tone="green">分析済み</Badge>;
+    default:
+      return (
+        <span className="text-xs text-black/30 dark:text-white/30">未分析</span>
+      );
+  }
+}
+
+export function SessionTable({ sessions }: { sessions: SessionListItem[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("lastAt");
   const [desc, setDesc] = useState(true);
 
@@ -67,6 +83,7 @@ export function SessionTable({ sessions }: { sessions: SessionSummary[] }) {
             {header("lastAt", "最終利用", "text-left")}
             {header("turns", "ターン")}
             <th className="py-2 text-left">モデル</th>
+            <th className="py-2 text-left">分析</th>
             <th className="py-2 text-right">トークン</th>
             {header("cost", "コスト")}
             <th className="py-2 text-right">操作時間</th>
@@ -101,6 +118,9 @@ export function SessionTable({ sessions }: { sessions: SessionSummary[] }) {
                     </Badge>
                   ))}
                 </span>
+              </td>
+              <td className="py-2 pr-3">
+                <AnalysisStatusBadge status={s.analysisStatus} />
               </td>
               <td className="py-2 pr-3 text-right tabular-nums">
                 {formatTokens(totalTokens(s.usage))}

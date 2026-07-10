@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { SessionTable } from "@/components/SessionTable";
 import { ErrorNote, Section, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/use-api";
-import type { SessionSummary } from "@/lib/types";
+import type { SessionListItem } from "@/lib/types";
 
 function SessionsContent() {
   const searchParams = useSearchParams();
@@ -14,7 +14,7 @@ function SessionsContent() {
     project !== null
       ? `/api/sessions?limit=500&project=${encodeURIComponent(project)}`
       : "/api/sessions?limit=500";
-  const { data, error, loading } = useApi<{ sessions: SessionSummary[] }>(url);
+  const { data, error, loading } = useApi<{ sessions: SessionListItem[] }>(url);
 
   return (
     <Section

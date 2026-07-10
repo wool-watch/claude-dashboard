@@ -8,7 +8,12 @@ import type { StoredAnalysis } from "@/lib/analysis/types";
 interface AnalysisState {
   analysis: StoredAnalysis | null;
   isStale: boolean;
+  /** サーバー側で分析実行中か（別タブ・再読込後も反映される） */
+  isAnalyzing: boolean;
 }
+
+/** 分析中にサーバーへ完了を確認する間隔 */
+const POLL_INTERVAL_MS = 3000;
 
 function ScoreCard({ label, value }: { label: string; value: number }) {
   return (
@@ -30,15 +35,24 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchState = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      const res = await fetch(`/api/sessions/${sessionId}/analysis`, {
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as AnalysisState;
+      setState(body);
+      setAnalyzing(body.isAnalyzing);
+    },
+    [sessionId],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch(`/api/sessions/${sessionId}/analysis`, {
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setState((await res.json()) as AnalysisState);
+        await fetchState(controller.signal);
       } catch {
         if (!controller.signal.aborted) {
           setError("分析結果の取得に失敗しました");
@@ -48,7 +62,22 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
       }
     })();
     return () => controller.abort();
-  }, [sessionId]);
+  }, [fetchState]);
+
+  // サーバー側で分析実行中の間はポーリングして完了を検知する
+  useEffect(() => {
+    if (!analyzing) return;
+    const controller = new AbortController();
+    const timer = setInterval(() => {
+      fetchState(controller.signal).catch(() => {
+        // 一時的な失敗は次のポーリングに任せる
+      });
+    }, POLL_INTERVAL_MS);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [analyzing, fetchState]);
 
   const analyze = useCallback(async () => {
     setAnalyzing(true);
@@ -58,13 +87,17 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
         method: "POST",
       });
       const body = (await res.json()) as AnalysisState & { error?: string };
+      if (res.status === 409) {
+        // 別タブ等で実行中 → ポーリングで完了を待つ
+        return;
+      }
       if (!res.ok) {
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      setState({ analysis: body.analysis, isStale: body.isStale });
+      setState({ analysis: body.analysis, isStale: body.isStale, isAnalyzing: false });
+      setAnalyzing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "分析に失敗しました");
-    } finally {
       setAnalyzing(false);
     }
   }, [sessionId]);
