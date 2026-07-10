@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
+import { getQueueSnapshot } from "@/lib/analysis/queue";
 import {
   getAnalysisWithStaleness,
   isAnalysisInflight,
@@ -13,11 +14,20 @@ export async function GET(
 ) {
   try {
     const { id } = await ctx.params;
-    const result = await getAnalysisWithStaleness(id);
+    const [result, queue] = await Promise.all([
+      getAnalysisWithStaleness(id),
+      getQueueSnapshot(),
+    ]);
     if (result === null) {
       return NextResponse.json({ error: "session not found" }, { status: 404 });
     }
-    return NextResponse.json({ ...result, isAnalyzing: isAnalysisInflight(id) });
+    return NextResponse.json({
+      ...result,
+      isAnalyzing: isAnalysisInflight(id),
+      isQueued: queue.items.some(
+        (i) => i.sessionId === id && i.state === "pending",
+      ),
+    });
   } catch (e) {
     return errorResponse(e);
   }

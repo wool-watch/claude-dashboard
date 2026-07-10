@@ -15,7 +15,12 @@ export const IMPROVEMENT_CATEGORIES = [
 export type ImprovementCategory = (typeof IMPROVEMENT_CATEGORIES)[number];
 
 /** セッション一覧に出す分析ステータス（analyzing > stale > analyzed > none） */
-export type SessionAnalysisStatus = "analyzing" | "analyzed" | "stale" | "none";
+export type SessionAnalysisStatus =
+  | "analyzing"
+  | "queued"
+  | "analyzed"
+  | "stale"
+  | "none";
 
 export interface AnalysisScores {
   /** 指示の明確さ 1..5 */

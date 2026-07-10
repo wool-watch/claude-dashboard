@@ -12,7 +12,8 @@ export type AnalysisErrorKind =
   | "invalid-output"
   | "in-flight"
   | "no-conversation"
-  | "no-analyses";
+  | "no-analyses"
+  | "aborted";
 
 export class AnalysisError extends Error {
   constructor(
@@ -40,6 +41,8 @@ export interface RunJsonOptions {
   model: string;
   jsonSchema: object;
   systemPrompt: string;
+  /** abort で子プロセスを SIGKILL し AnalysisError("aborted") にする */
+  signal?: AbortSignal;
 }
 
 /** runClaudeJson の結果。result の検証は呼出側の責務 */
@@ -122,11 +125,12 @@ export async function runClaudeJson(
     "Bash,Edit,Write,NotebookEdit,WebSearch,WebFetch,Task",
   ];
 
-  const { stdout, stderr, code, timedOut, spawnError } = await new Promise<{
+  const { stdout, stderr, code, timedOut, aborted, spawnError } = await new Promise<{
     stdout: string;
     stderr: string;
     code: number | null;
     timedOut: boolean;
+    aborted: boolean;
     spawnError: NodeJS.ErrnoException | null;
   }>((resolve) => {
     const child = spawn(config.claudeCliPath, args, {
@@ -137,12 +141,23 @@ export async function runClaudeJson(
     let stdoutBuf = "";
     let stderrBuf = "";
     let timedOutFlag = false;
+    let abortedFlag = false;
     let settled = false;
     const timer = setTimeout(() => {
       timedOutFlag = true;
       child.kill("SIGKILL");
     }, config.analysisTimeoutMs);
     timer.unref();
+
+    const onAbort = () => {
+      abortedFlag = true;
+      child.kill("SIGKILL");
+    };
+    if (options.signal?.aborted === true) {
+      onAbort();
+    } else {
+      options.signal?.addEventListener("abort", onAbort);
+    }
 
     const settle = (
       code: number | null,
@@ -151,11 +166,13 @@ export async function runClaudeJson(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
       resolve({
         stdout: stdoutBuf,
         stderr: stderrBuf,
         code,
         timedOut: timedOutFlag,
+        aborted: abortedFlag,
         spawnError,
       });
     };
@@ -185,6 +202,10 @@ export async function runClaudeJson(
       "cli-failed",
     );
   }
+  if (aborted) {
+    // timeout と同時発火した場合も中止を優先する
+    throw new AnalysisError("分析を中止しました", "aborted");
+  }
   if (timedOut) {
     throw new AnalysisError(
       `分析がタイムアウトしました（${Math.round(config.analysisTimeoutMs / 1000)}秒）`,
@@ -212,6 +233,7 @@ export async function runClaudeAnalysis(
   prompt: string,
   model: AnalysisModel,
   config: DashboardConfig,
+  signal?: AbortSignal,
 ): Promise<RunOutcome> {
   const outcome = await runClaudeJson(
     prompt,
@@ -219,6 +241,7 @@ export async function runClaudeAnalysis(
       model,
       jsonSchema: ANALYSIS_JSON_SCHEMA,
       systemPrompt: SYSTEM_PROMPT,
+      signal,
     },
     config,
   );

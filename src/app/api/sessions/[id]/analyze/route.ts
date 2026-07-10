@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
+import { getQueueSnapshot } from "@/lib/analysis/queue";
 import { AnalysisError } from "@/lib/analysis/runner";
 import { analyzeSession } from "@/lib/analysis/service";
 
@@ -13,6 +14,7 @@ const STATUS_BY_KIND: Record<AnalysisError["kind"], number> = {
   "cli-failed": 502,
   timeout: 502,
   "invalid-output": 502,
+  aborted: 409, // 手動経路では発生しない（型の網羅のため）
 };
 
 export async function POST(
@@ -21,6 +23,14 @@ export async function POST(
 ) {
   try {
     const { id } = await ctx.params;
+    // キュー待機中はワーカーとの二重実行を防ぐ（解除してから手動実行する）
+    const queue = await getQueueSnapshot();
+    if (queue.items.some((i) => i.sessionId === id && i.state === "pending")) {
+      throw new AnalysisError(
+        "このセッションは分析キューで待機中です。解除してから実行してください",
+        "in-flight",
+      );
+    }
     const analysis = await analyzeSession(id);
     if (analysis === null) {
       return NextResponse.json({ error: "session not found" }, { status: 404 });

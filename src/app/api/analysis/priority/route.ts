@@ -18,6 +18,7 @@ const STATUS_BY_KIND: Record<AnalysisError["kind"], number> = {
   "cli-failed": 502,
   timeout: 502,
   "invalid-output": 502,
+  aborted: 409, // 優先課題分析では発生しない（型の網羅のため）
 };
 
 export async function POST(req: NextRequest) {

@@ -3,7 +3,12 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { RunOutcome } from "@/lib/analysis/runner";
 import { AnalysisError, runClaudeAnalysis } from "@/lib/analysis/runner";
-import { readAllAnalyses, readAnalysis, writeAnalysis } from "@/lib/analysis/store";
+import {
+  readAllAnalyses,
+  readAnalysis,
+  readQueue,
+  writeAnalysis,
+} from "@/lib/analysis/store";
 import { buildTranscript } from "@/lib/analysis/transcript";
 import type { SessionAnalysisStatus, StoredAnalysis } from "@/lib/analysis/types";
 import type { DashboardConfig } from "@/lib/config";
@@ -21,6 +26,7 @@ type RunFn = (
   prompt: string,
   model: AnalysisModel,
   config: DashboardConfig,
+  signal?: AbortSignal,
 ) => Promise<RunOutcome>;
 
 declare global {
@@ -60,6 +66,7 @@ ${transcript}`;
 export async function analyzeSession(
   sessionId: string,
   deps: { run: RunFn } = { run: runClaudeAnalysis },
+  opts: { signal?: AbortSignal } = {},
 ): Promise<StoredAnalysis | null> {
   const inflight = getInflightMap();
   if (inflight.has(sessionId)) {
@@ -91,6 +98,7 @@ export async function analyzeSession(
       buildPrompt(transcript.text),
       settings.analysisModel,
       config,
+      opts.signal,
     );
 
     const stored: StoredAnalysis = {
@@ -187,13 +195,21 @@ export async function getAnalysisStatusMap(): Promise<
   Map<string, SessionAnalysisStatus>
 > {
   const config = getConfig();
-  const analyses = await readAllAnalyses(config.analysisDir);
+  const [analyses, queue] = await Promise.all([
+    readAllAnalyses(config.analysisDir),
+    readQueue(config.analysisDir),
+  ]);
   const entries = await Promise.all(
     analyses.map(
       async (a) => [a.sessionId, await statusOfAnalysis(a, config)] as const,
     ),
   );
   const map = new Map<string, SessionAnalysisStatus>(entries);
+  // 待機中は分析済み・stale より優先（一覧の関心事は「これから何が起きるか」）
+  for (const item of queue.items) {
+    if (item.state === "pending") map.set(item.sessionId, "queued");
+    else if (item.state === "running") map.set(item.sessionId, "analyzing");
+  }
   for (const sessionId of getInflightMap().keys()) {
     map.set(sessionId, "analyzing");
   }
