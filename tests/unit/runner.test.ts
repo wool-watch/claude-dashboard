@@ -6,6 +6,7 @@ import {
   AnalysisError,
   parseCliEnvelope,
   runClaudeAnalysis,
+  runClaudeJson,
 } from "@/lib/analysis/runner";
 import { getConfig } from "@/lib/config";
 
@@ -141,6 +142,58 @@ describe("runClaudeAnalysis: 異常系", () => {
       runClaudeAnalysis("p", "haiku", getConfig()),
       "cli-not-found",
     );
+  });
+});
+
+describe("runClaudeJson", () => {
+  it("カスタムのモデル・スキーマ・システムプロンプトを渡し、result を未検証のまま返す", async () => {
+    echoEnvelope({
+      type: "result",
+      result: { a: 1 },
+      is_error: false,
+      total_cost_usd: 0.5,
+    });
+
+    const outcome = await runClaudeJson(
+      "カスタムプロンプト",
+      {
+        model: "opus",
+        jsonSchema: { type: "object", title: "custom-schema-marker" },
+        systemPrompt: "カスタムシステムプロンプト",
+      },
+      getConfig(),
+    );
+
+    expect(outcome.result).toEqual({ a: 1 });
+    expect(outcome.costUSD).toBe(0.5);
+
+    const argv = readFileSync(path.join(tmpDir, "argv.txt"), "utf8");
+    expect(argv).toContain("opus");
+    expect(argv).toContain("custom-schema-marker");
+    expect(argv).toContain("カスタムシステムプロンプト");
+    expect(argv).toContain("--no-session-persistence");
+    const stdin = readFileSync(path.join(tmpDir, "stdin.txt"), "utf8");
+    expect(stdin).toBe("カスタムプロンプト");
+  });
+
+  it("is_error: true は cli-failed", async () => {
+    echoEnvelope({
+      type: "result",
+      result: "budget exceeded",
+      is_error: true,
+      total_cost_usd: 0,
+    });
+    try {
+      await runClaudeJson(
+        "p",
+        { model: "haiku", jsonSchema: {}, systemPrompt: "s" },
+        getConfig(),
+      );
+      expect.unreachable("should throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AnalysisError);
+      expect((e as AnalysisError).kind).toBe("cli-failed");
+    }
   });
 });
 

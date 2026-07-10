@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readAllAnalyses,
   readAnalysis,
+  readPriorityAnalysis,
   writeAnalysis,
+  writePriorityAnalysis,
 } from "@/lib/analysis/store";
+import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -95,5 +98,62 @@ describe("readAllAnalyses", () => {
 
     const all = await readAllAnalyses(analysisDir);
     expect(all.map((a) => a.sessionId).sort()).toEqual([UUID_A, UUID_B]);
+  });
+
+  it("priority-analysis.json は無視する", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    await writePriorityAnalysis(analysisDir, storedPriority());
+
+    const all = await readAllAnalyses(analysisDir);
+    expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
+  });
+});
+
+const storedPriority = (): StoredPriorityAnalysis => ({
+  schemaVersion: 1,
+  analyzedAt: "2026-07-10T00:00:00.000Z",
+  model: "opus",
+  analyzedSessionCount: 3,
+  costUSD: 0.1,
+  result: {
+    pickedIssues: [
+      {
+        point: "タスクを小さく分割すると良い",
+        category: "タスク分割",
+        reason: "頻出のため",
+        actions: ["依頼を3ステップに分ける"],
+      },
+    ],
+    summary: "全体講評。",
+  },
+});
+
+describe("writePriorityAnalysis / readPriorityAnalysis", () => {
+  it("書き込んだ結果を読み戻せる（ディレクトリ自動作成・上書き）", async () => {
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    expect(await readPriorityAnalysis(analysisDir)).toEqual(storedPriority());
+
+    const updated = { ...storedPriority(), analyzedSessionCount: 9 };
+    await writePriorityAnalysis(analysisDir, updated);
+    expect((await readPriorityAnalysis(analysisDir))?.analyzedSessionCount).toBe(9);
+  });
+
+  it("一時ファイルを残さない", async () => {
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    expect(readdirSync(analysisDir)).toEqual(["priority-analysis.json"]);
+  });
+
+  it("未保存・破損・型ガード不合格は null", async () => {
+    expect(await readPriorityAnalysis(analysisDir)).toBeNull();
+
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    writeFileSync(path.join(analysisDir, "priority-analysis.json"), "{broken");
+    expect(await readPriorityAnalysis(analysisDir)).toBeNull();
+
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.json"),
+      JSON.stringify({ ...storedPriority(), schemaVersion: 99 }),
+    );
+    expect(await readPriorityAnalysis(analysisDir)).toBeNull();
   });
 });
