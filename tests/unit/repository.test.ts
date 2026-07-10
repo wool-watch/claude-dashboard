@@ -6,7 +6,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getGlobalCache } from "@/lib/store/cache";
-import { getAllSessions, getSession } from "@/lib/store/repository";
+import {
+  getAllSessions,
+  getSession,
+  getSessionFileRef,
+} from "@/lib/store/repository";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -173,6 +177,38 @@ describe("getAllSessions: ファイルサイズ上限", () => {
     } finally {
       delete process.env.MAX_FILE_SIZE_MB;
     }
+  });
+});
+
+describe("getSessionFileRef", () => {
+  it("ライブのファイルパスと stat を返す", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    const ref = await getSessionFileRef(UUID_A);
+    expect(ref?.filePath).toBe(path.join(tmpDir, "-proj-a", `${UUID_A}.jsonl`));
+    expect(ref?.projectId).toBe("-proj-a");
+    expect(ref?.size).toBe(Buffer.byteLength(basicJsonl));
+    expect(ref?.mtimeMs).toBeGreaterThan(0);
+  });
+
+  it("アーカイブのみの場合はアーカイブのパスを返す", async () => {
+    writeArchiveFile("-proj-b", UUID_B, basicJsonl);
+    const ref = await getSessionFileRef(UUID_B);
+    expect(ref?.filePath).toBe(
+      path.join(archiveTmpDir, "-proj-b", `${UUID_B}.jsonl`),
+    );
+    expect(ref?.projectId).toBe("-proj-b");
+  });
+
+  it("両方に存在する場合はライブ優先", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    writeArchiveFile("-proj-a", UUID_A, basicJsonl);
+    const ref = await getSessionFileRef(UUID_A);
+    expect(ref?.filePath).toBe(path.join(tmpDir, "-proj-a", `${UUID_A}.jsonl`));
+  });
+
+  it("不正UUID・不存在は null", async () => {
+    expect(await getSessionFileRef("../etc/passwd")).toBeNull();
+    expect(await getSessionFileRef(UUID_A)).toBeNull();
   });
 });
 
