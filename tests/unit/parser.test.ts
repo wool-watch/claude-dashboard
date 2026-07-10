@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseJsonlLines } from "@/lib/parser/jsonl";
 import {
+  extractAssistantText,
   extractToolUses,
   extractUserText,
   isAiTitleRecord,
@@ -212,6 +213,18 @@ describe("content ユーティリティ", () => {
       ]),
     ).toBe("前半\n後半");
     expect(extractUserText([{ type: "tool_result" }])).toBe("");
+  });
+
+  it("extractAssistantText: text ブロックのみ改行で連結、undefined は空文字", () => {
+    expect(
+      extractAssistantText([
+        { type: "text", text: "回答前半" },
+        { type: "tool_use", id: "t1", name: "Bash" },
+        { type: "text", text: "回答後半" },
+      ]),
+    ).toBe("回答前半\n回答後半");
+    expect(extractAssistantText(undefined)).toBe("");
+    expect(extractAssistantText([{ type: "tool_use", id: "t1", name: "Bash" }])).toBe("");
   });
 
   it("isToolResultOnly: 全ブロックが tool_result のときのみ true", () => {
