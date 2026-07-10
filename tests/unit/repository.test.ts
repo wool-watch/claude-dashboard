@@ -17,24 +17,38 @@ const basicJsonl = readFileSync(
 );
 
 let tmpDir: string;
+let archiveTmpDir: string;
 let prevEnv: string | undefined;
+let prevArchiveEnv: string | undefined;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "claude-dash-test-"));
+  archiveTmpDir = mkdtempSync(path.join(os.tmpdir(), "claude-dash-arch-"));
   prevEnv = process.env.CLAUDE_DATA_DIR;
+  prevArchiveEnv = process.env.CLAUDE_ARCHIVE_DIR;
   process.env.CLAUDE_DATA_DIR = tmpDir;
+  process.env.CLAUDE_ARCHIVE_DIR = archiveTmpDir;
   getGlobalCache().clear();
 });
 
 afterEach(() => {
   if (prevEnv === undefined) delete process.env.CLAUDE_DATA_DIR;
   else process.env.CLAUDE_DATA_DIR = prevEnv;
+  if (prevArchiveEnv === undefined) delete process.env.CLAUDE_ARCHIVE_DIR;
+  else process.env.CLAUDE_ARCHIVE_DIR = prevArchiveEnv;
   rmSync(tmpDir, { recursive: true, force: true });
+  rmSync(archiveTmpDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
 
 const writeSessionFile = (projectId: string, uuid: string, content: string) => {
   const dir = path.join(tmpDir, projectId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `${uuid}.jsonl`), content);
+};
+
+const writeArchiveFile = (projectId: string, uuid: string, content: string) => {
+  const dir = path.join(archiveTmpDir, projectId);
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, `${uuid}.jsonl`), content);
 };
@@ -101,6 +115,47 @@ describe("getAllSessions", () => {
 
     const rootCalls = spy.mock.calls.filter((c) => c[0] === tmpDir);
     expect(rootCalls).toHaveLength(1);
+  });
+});
+
+describe("getAllSessions: アーカイブマージ", () => {
+  const extraTurn =
+    '{"type":"user","promptId":"p3","message":{"role":"user","content":"追記"},"uuid":"u9","parentUuid":null,"timestamp":"2026-07-01T00:02:00.000Z","isSidechain":false}\n';
+
+  it("アーカイブのみに存在するセッションも返す", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    writeArchiveFile("-proj-b", UUID_B, basicJsonl);
+
+    const sessions = await getAllSessions();
+    expect(sessions.map((s) => s.sessionId).sort()).toEqual([UUID_A, UUID_B]);
+    const b = sessions.find((s) => s.sessionId === UUID_B);
+    expect(b?.projectId).toBe("-proj-b");
+  });
+
+  it("同一 sessionId はライブ側を優先する", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl + extraTurn); // 3ターン
+    writeArchiveFile("-proj-a", UUID_A, basicJsonl); // 2ターン（古い）
+
+    const sessions = await getAllSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].turnCount).toBe(3);
+  });
+
+  it("dataDir が存在しなくてもアーカイブのセッションを返す", async () => {
+    process.env.CLAUDE_DATA_DIR = path.join(tmpDir, "does-not-exist");
+    writeArchiveFile("-proj-a", UUID_A, basicJsonl);
+
+    const sessions = await getAllSessions();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].sessionId).toBe(UUID_A);
+  });
+
+  it("アーカイブ由来のキャッシュは走査をまたいで保持される", async () => {
+    writeArchiveFile("-proj-a", UUID_A, basicJsonl);
+    const first = await getAllSessions();
+    const second = await getAllSessions();
+    // prune で消されず再パースされない = 同一オブジェクトが返る
+    expect(second[0]).toBe(first[0]);
   });
 });
 
