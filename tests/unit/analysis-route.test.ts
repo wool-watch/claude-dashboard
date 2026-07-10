@@ -18,6 +18,7 @@ import { GET as getAnalysis } from "@/app/api/sessions/[id]/analysis/route";
 import { POST as postAnalyze } from "@/app/api/sessions/[id]/analyze/route";
 import type { RunOutcome } from "@/lib/analysis/runner";
 import { analyzeSession } from "@/lib/analysis/service";
+import { writeQueue } from "@/lib/analysis/store";
 import { getGlobalCache } from "@/lib/store/cache";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -165,6 +166,7 @@ describe("GET /api/sessions/[id]/analysis", () => {
       analysis: null,
       isStale: false,
       isAnalyzing: false,
+      isQueued: false,
     });
   });
 
@@ -235,5 +237,35 @@ describe("GET /api/analysis/summary", () => {
     expect(body.analyzedCount).toBe(2);
     expect(body.categoryRanking[0].category).toBe("タスク分割");
     expect(body.avgScores.goalAchievement).toBe(5);
+  });
+});
+
+describe("キュー待機中のセッション", () => {
+  const seedQueuePending = (sessionId: string) =>
+    writeQueue(path.join(baseDir, "analysis"), {
+      schemaVersion: 1,
+      paused: true,
+      items: [
+        { sessionId, state: "pending", enqueuedAt: "2026-07-10T00:00:00.000Z" },
+      ],
+    });
+
+  it("GET analysis は isQueued true を返す", async () => {
+    writeLive(UUID_A, basicJsonl);
+    await seedQueuePending(UUID_A);
+
+    const res = await getAnalysis(req(`/api/sessions/${UUID_A}/analysis`), ctx(UUID_A));
+    expect(res.status).toBe(200);
+    expect((await res.json()).isQueued).toBe(true);
+  });
+
+  it("POST analyze は 409 で拒否する", async () => {
+    writeLive(UUID_A, basicJsonl);
+    okCli();
+    await seedQueuePending(UUID_A);
+
+    const res = await postAnalyze(req(`/api/sessions/${UUID_A}/analyze`, "POST"), ctx(UUID_A));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain("待機中");
   });
 });

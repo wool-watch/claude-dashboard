@@ -221,3 +221,64 @@ describe("parseCliEnvelope", () => {
     expect(() => parseCliEnvelope("garbage")).toThrow(AnalysisError);
   });
 });
+
+describe("中止（AbortSignal）", () => {
+  const expectAborted = async (promise: Promise<unknown>) => {
+    try {
+      await promise;
+      expect.unreachable("should throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(AnalysisError);
+      expect((e as AnalysisError).kind).toBe("aborted");
+    }
+  };
+
+  it("runClaudeJson: abort で子プロセスを止め aborted を投げる", async () => {
+    makeFakeCli(`sleep 5`);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+
+    const startedAt = Date.now();
+    await expectAborted(
+      runClaudeJson(
+        "p",
+        {
+          model: "haiku",
+          jsonSchema: {},
+          systemPrompt: "s",
+          signal: controller.signal,
+        },
+        getConfig(),
+      ),
+    );
+    // sleep 5 の完了を待たず SIGKILL で即座に終わる
+    expect(Date.now() - startedAt).toBeLessThan(3000);
+  }, 10_000);
+
+  it("runClaudeAnalysis も signal を透過する", async () => {
+    makeFakeCli(`sleep 5`);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    await expectAborted(
+      runClaudeAnalysis("p", "haiku", getConfig(), controller.signal),
+    );
+  }, 10_000);
+
+  it("完了後の abort は無視される", async () => {
+    echoEnvelope({
+      type: "result",
+      result: validResult,
+      is_error: false,
+      total_cost_usd: 0.01,
+    });
+    const controller = new AbortController();
+    const outcome = await runClaudeAnalysis(
+      "p",
+      "haiku",
+      getConfig(),
+      controller.signal,
+    );
+    controller.abort();
+    expect(outcome.result.summary).toBe("テストセッションの要約。");
+  });
+});

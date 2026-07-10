@@ -6,10 +6,13 @@ import {
   readAllAnalyses,
   readAnalysis,
   readPriorityAnalysis,
+  readQueue,
   writeAnalysis,
   writePriorityAnalysis,
+  writeQueue,
 } from "@/lib/analysis/store";
 import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
+import { EMPTY_QUEUE, type StoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -155,5 +158,55 @@ describe("writePriorityAnalysis / readPriorityAnalysis", () => {
       JSON.stringify({ ...storedPriority(), schemaVersion: 99 }),
     );
     expect(await readPriorityAnalysis(analysisDir)).toBeNull();
+  });
+});
+
+const storedQueue = (): StoredQueue => ({
+  schemaVersion: 1,
+  paused: true,
+  items: [
+    {
+      sessionId: UUID_A,
+      state: "pending",
+      enqueuedAt: "2026-07-10T00:00:00.000Z",
+    },
+  ],
+});
+
+describe("writeQueue / readQueue", () => {
+  it("書き込んだキューを読み戻せる（ディレクトリ自動作成・上書き）", async () => {
+    await writeQueue(analysisDir, storedQueue());
+    expect(await readQueue(analysisDir)).toEqual(storedQueue());
+
+    const updated = { ...storedQueue(), paused: false };
+    await writeQueue(analysisDir, updated);
+    expect((await readQueue(analysisDir)).paused).toBe(false);
+  });
+
+  it("一時ファイルを残さない", async () => {
+    await writeQueue(analysisDir, storedQueue());
+    expect(readdirSync(analysisDir)).toEqual(["analysis-queue.json"]);
+  });
+
+  it("欠損・破損・型ガード不合格は EMPTY_QUEUE", async () => {
+    expect(await readQueue(analysisDir)).toEqual(EMPTY_QUEUE);
+
+    await writeQueue(analysisDir, storedQueue());
+    writeFileSync(path.join(analysisDir, "analysis-queue.json"), "{broken");
+    expect(await readQueue(analysisDir)).toEqual(EMPTY_QUEUE);
+
+    writeFileSync(
+      path.join(analysisDir, "analysis-queue.json"),
+      JSON.stringify({ ...storedQueue(), schemaVersion: 99 }),
+    );
+    expect(await readQueue(analysisDir)).toEqual(EMPTY_QUEUE);
+  });
+
+  it("readAllAnalyses は analysis-queue.json を無視する", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    await writeQueue(analysisDir, storedQueue());
+
+    const all = await readAllAnalyses(analysisDir);
+    expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
   });
 });

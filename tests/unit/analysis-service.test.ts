@@ -19,6 +19,7 @@ import {
   getAnalysisWithStaleness,
   isAnalysisInflight,
 } from "@/lib/analysis/service";
+import { writeQueue } from "@/lib/analysis/store";
 import { getGlobalCache } from "@/lib/store/cache";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
@@ -283,5 +284,57 @@ describe("getAnalysisStatusMap / isAnalysisInflight", () => {
 
     expect(isAnalysisInflight(UUID_A)).toBe(false);
     expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
+  });
+});
+
+describe("getAnalysisStatusMap: キュー待機の反映", () => {
+  const seedQueuePending = (sessionId: string) =>
+    writeQueue(path.join(baseDir, "analysis"), {
+      schemaVersion: 1,
+      paused: false,
+      items: [
+        { sessionId, state: "pending", enqueuedAt: "2026-07-10T00:00:00.000Z" },
+      ],
+    });
+
+  it("キュー pending は queued（未分析セッションでも）", async () => {
+    writeLive(UUID_B, basicJsonl);
+    await seedQueuePending(UUID_B);
+    expect((await getAnalysisStatusMap()).get(UUID_B)).toBe("queued");
+  });
+
+  it("分析済み・stale より queued を優先する", async () => {
+    const filePath = writeLive(UUID_A, basicJsonl);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
+
+    await seedQueuePending(UUID_A);
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("queued");
+
+    // stale 化しても queued のまま（これから起きることを優先表示）
+    writeFileSync(filePath, `${basicJsonl}\n`);
+    const future = new Date(Date.now() + 5000);
+    utimesSync(filePath, future, future);
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("queued");
+  });
+
+  it("in-flight は queued より優先で analyzing", async () => {
+    writeLive(UUID_A, basicJsonl);
+    await seedQueuePending(UUID_A);
+
+    let release: (v: RunOutcome) => void = () => {};
+    const run = vi.fn(
+      () =>
+        new Promise<RunOutcome>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const pending = analyzeSession(UUID_A, { run });
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzing");
+
+    release(outcome);
+    await pending;
   });
 });
