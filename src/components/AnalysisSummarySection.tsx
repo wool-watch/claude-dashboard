@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,6 +17,7 @@ import {
   CHART_GRID,
   CHART_TOOLTIP_PROPS,
 } from "@/components/charts/theme";
+import { PriorityAnalysisModal } from "@/components/PriorityAnalysisModal";
 import { Badge, EmptyState, ErrorNote, Section, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/use-api";
 import type { AnalysisSummaryDto } from "@/lib/analysis/aggregate";
@@ -170,15 +172,31 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
 
 export function AnalysisSummarySection() {
   const summary = useApi<AnalysisSummaryDto>("/api/analysis/summary");
+  const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <Section title="振り返りサマリー（AI分析の傾向）">
+    <Section
+      title="振り返りサマリー（AI分析の傾向）"
+      action={
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
+        >
+          優先課題を分析
+        </button>
+      }
+    >
       {summary.error !== null && <ErrorNote message={summary.error} />}
       {summary.loading ? (
         <Skeleton className="h-40" />
       ) : (
         summary.data !== null && <SummaryBody dto={summary.data} />
       )}
+      <PriorityAnalysisModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Section>
   );
 }

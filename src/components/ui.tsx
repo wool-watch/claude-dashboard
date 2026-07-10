@@ -2,16 +2,22 @@ import type { ReactNode } from "react";
 
 export function Section({
   title,
+  action,
   children,
 }: {
   title: string;
+  /** 見出し行の右端に置く操作要素（ボタン等） */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="rounded-lg border border-black/10 p-4 dark:border-white/15">
-      <h2 className="mb-3 text-sm font-semibold text-black/70 dark:text-white/70">
-        {title}
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-black/70 dark:text-white/70">
+          {title}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
   );
