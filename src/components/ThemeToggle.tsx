@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type Theme = "system" | "light" | "dark";
 
@@ -11,6 +11,9 @@ const LABELS: Record<Theme, string> = {
   dark: "ダーク",
 };
 
+/** localStorage の変更を購読者へ通知するための同一タブ内イベント */
+const THEME_EVENT = "claude-dashboard-theme-change";
+
 function applyTheme(theme: Theme): void {
   const dark =
     theme === "dark" ||
@@ -19,15 +22,30 @@ function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle("dark", dark);
   if (theme === "system") localStorage.removeItem("theme");
   else localStorage.setItem("theme", theme);
+  window.dispatchEvent(new Event(THEME_EVENT));
+}
+
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener(THEME_EVENT, onChange);
+  window.addEventListener("storage", onChange); // 別タブでの変更にも追従
+  return () => {
+    window.removeEventListener(THEME_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getTheme(): Theme {
+  const saved = localStorage.getItem("theme");
+  return saved === "light" || saved === "dark" ? saved : "system";
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("system");
-
-  useEffect(() => {
-    const saved = localStorage.getItem("theme");
-    if (saved === "light" || saved === "dark") setTheme(saved);
-  }, []);
+  // SSR/ハイドレーション時は "system"、マウント後に localStorage の値へ同期される
+  const theme = useSyncExternalStore<Theme>(
+    subscribe,
+    getTheme,
+    () => "system",
+  );
 
   // 「自動」選択中は OS 設定の変更に追従する
   useEffect(() => {
@@ -43,7 +61,6 @@ export function ThemeToggle() {
       type="button"
       onClick={() => {
         const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length];
-        setTheme(next);
         applyTheme(next);
       }}
       title="テーマ切替（自動 → ライト → ダーク）"
