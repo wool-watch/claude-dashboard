@@ -8,6 +8,10 @@ afterEach(() => {
   delete process.env.CLAUDE_ARCHIVE_DIR;
   delete process.env.CLAUDE_SETTINGS_PATH;
   delete process.env.ARCHIVE_SYNC_INTERVAL_MS;
+  delete process.env.CLAUDE_ANALYSIS_DIR;
+  delete process.env.CLAUDE_CLI_PATH;
+  delete process.env.ANALYSIS_TIMEOUT_MS;
+  delete process.env.ANALYSIS_MAX_BUDGET_USD;
 });
 
 describe("getConfig: maxFileSizeBytes", () => {
@@ -69,4 +73,67 @@ describe("getConfig: archiveSyncIntervalMs", () => {
       expect(getConfig().archiveSyncIntervalMs).toBe(5 * 60 * 1000);
     },
   );
+});
+
+describe("getConfig: analysisDir", () => {
+  it("既定値は ~/.claude-dashboard/analysis", () => {
+    expect(getConfig().analysisDir).toBe(
+      path.join(os.homedir(), ".claude-dashboard", "analysis"),
+    );
+  });
+
+  it("CLAUDE_ANALYSIS_DIR で上書きできる", () => {
+    process.env.CLAUDE_ANALYSIS_DIR = "/tmp/custom-analysis";
+    expect(getConfig().analysisDir).toBe("/tmp/custom-analysis");
+  });
+});
+
+describe("getConfig: claudeCliPath", () => {
+  it("既定値は claude", () => {
+    expect(getConfig().claudeCliPath).toBe("claude");
+  });
+
+  it("CLAUDE_CLI_PATH で上書きできる", () => {
+    process.env.CLAUDE_CLI_PATH = "/opt/bin/claude";
+    expect(getConfig().claudeCliPath).toBe("/opt/bin/claude");
+  });
+});
+
+describe("getConfig: analysisTimeoutMs", () => {
+  it("既定値は 180秒", () => {
+    expect(getConfig().analysisTimeoutMs).toBe(180 * 1000);
+  });
+
+  it("ANALYSIS_TIMEOUT_MS で上書きできる", () => {
+    process.env.ANALYSIS_TIMEOUT_MS = "200";
+    expect(getConfig().analysisTimeoutMs).toBe(200);
+  });
+
+  it.each(["abc", "0", "-1"])("不正値 %s は既定値にフォールバックする", (raw) => {
+    process.env.ANALYSIS_TIMEOUT_MS = raw;
+    expect(getConfig().analysisTimeoutMs).toBe(180 * 1000);
+  });
+});
+
+describe("getConfig: analysisMaxBudgetUsd", () => {
+  it("既定値は 1", () => {
+    expect(getConfig().analysisMaxBudgetUsd).toBe(1);
+  });
+
+  it("ANALYSIS_MAX_BUDGET_USD で上書きできる", () => {
+    process.env.ANALYSIS_MAX_BUDGET_USD = "0.5";
+    expect(getConfig().analysisMaxBudgetUsd).toBe(0.5);
+  });
+
+  it.each(["abc", "0", "-1"])("不正値 %s は既定値にフォールバックする", (raw) => {
+    process.env.ANALYSIS_MAX_BUDGET_USD = raw;
+    expect(getConfig().analysisMaxBudgetUsd).toBe(1);
+  });
+});
+
+describe("getConfig: トランスクリプト上限", () => {
+  it("全体 40,000字・メッセージ単位 2,000字", () => {
+    expect(getConfig().transcriptMaxChars).toBe(40_000);
+    expect(getConfig().transcriptMaxCharsPerMessage).toBe(2_000);
+  });
 });
