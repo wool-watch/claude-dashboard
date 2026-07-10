@@ -10,8 +10,12 @@ import { SESSION_FILE_RE } from "@/lib/store/repository";
 export interface SyncResult {
   copied: number;
   pruned: number;
+  /** セッションが消滅したため削除した分析結果の数 */
+  prunedAnalyses: number;
   errors: number;
 }
+
+const ANALYSIS_FILE_RE = /^[0-9a-f-]{36}\.json$/i;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -33,7 +37,7 @@ export async function syncArchive(
   settings: AppSettings,
   now: Date = new Date(),
 ): Promise<SyncResult> {
-  const result: SyncResult = { copied: 0, pruned: 0, errors: 0 };
+  const result: SyncResult = { copied: 0, pruned: 0, prunedAnalyses: 0, errors: 0 };
   await fs.mkdir(config.archiveDir, { recursive: true });
 
   // コピーフェーズ: ライブ側を列挙し、無い/変わったファイルをミラーする
@@ -109,6 +113,44 @@ export async function syncArchive(
     }
     // 空になったプロジェクトディレクトリは削除（中身があれば ENOTEMPTY で失敗し、無視）
     await fs.rmdir(archProjectDir).catch(() => {});
+  }
+
+  // 孤児クリーンアップ: セッションがライブ・アーカイブ双方に無い分析結果を削除する。
+  // これにより分析結果の寿命は保持期間設定（retentionDays）に自動的に連動する。
+  const livingSessionIds = new Set<string>();
+  for (const key of livePaths) {
+    livingSessionIds.add(key.split("/")[1].replace(/\.jsonl$/i, ""));
+  }
+  for (const projectId of await listProjectDirs(config.archiveDir)) {
+    let files: string[];
+    try {
+      files = await fs.readdir(path.join(config.archiveDir, projectId));
+    } catch {
+      continue;
+    }
+    for (const file of files) {
+      if (SESSION_FILE_RE.test(file)) {
+        livingSessionIds.add(file.replace(/\.jsonl$/i, ""));
+      }
+    }
+  }
+  let analysisFiles: string[];
+  try {
+    analysisFiles = await fs.readdir(config.analysisDir);
+  } catch {
+    analysisFiles = []; // 分析未実施
+  }
+  for (const file of analysisFiles) {
+    if (!ANALYSIS_FILE_RE.test(file)) continue;
+    const sessionId = file.replace(/\.json$/i, "");
+    if (livingSessionIds.has(sessionId)) continue;
+    try {
+      await fs.unlink(path.join(config.analysisDir, file));
+      result.prunedAnalyses += 1;
+    } catch (e) {
+      result.errors += 1;
+      console.error(`analysis prune failed for ${file}:`, e);
+    }
   }
 
   return result;

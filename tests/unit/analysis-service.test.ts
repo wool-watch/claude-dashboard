@@ -67,7 +67,7 @@ const outcome: RunOutcome = {
 describe("analyzeSession", () => {
   it("分析を実行して保存し、メタデータを埋める", async () => {
     writeLive(UUID_A, basicJsonl);
-    const run = vi.fn(async () => outcome);
+    const run = vi.fn(async (_prompt: string, _model: string) => outcome);
 
     const saved = await analyzeSession(UUID_A, { run });
 
@@ -84,7 +84,7 @@ describe("analyzeSession", () => {
     ).toBe(true);
 
     // プロンプトにトランスクリプトが含まれる
-    const prompt = run.mock.calls[0][0] as string;
+    const prompt = run.mock.calls[0][0];
     expect(prompt).toContain("[USER] 最初の質問");
     expect(prompt).toContain("[ASSISTANT] 回答1");
   });
@@ -95,7 +95,7 @@ describe("analyzeSession", () => {
       path.join(baseDir, "settings.json"),
       JSON.stringify({ retentionDays: null, analysisModel: "sonnet" }),
     );
-    const run = vi.fn(async () => outcome);
+    const run = vi.fn(async (_prompt: string, _model: string) => outcome);
 
     await analyzeSession(UUID_A, { run });
     expect(run.mock.calls[0][1]).toBe("sonnet");

@@ -100,7 +100,7 @@ describe("isStoredAnalysis", () => {
 
 describe("ANALYSIS_JSON_SCHEMA", () => {
   it("カテゴリ enum が IMPROVEMENT_CATEGORIES と一致する", () => {
-    const schema = ANALYSIS_JSON_SCHEMA as {
+    const schema = ANALYSIS_JSON_SCHEMA as unknown as {
       properties: {
         improvements: {
           items: { properties: { category: { enum: string[] } } };
