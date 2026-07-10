@@ -11,7 +11,8 @@ export type AnalysisErrorKind =
   | "timeout"
   | "invalid-output"
   | "in-flight"
-  | "no-conversation";
+  | "no-conversation"
+  | "no-analyses";
 
 export class AnalysisError extends Error {
   constructor(
@@ -31,6 +32,19 @@ export interface CliEnvelope {
 
 export interface RunOutcome {
   result: AnalysisResult;
+  costUSD: number | null;
+}
+
+/** runClaudeJson に渡す実行オプション（スキーマ・プロンプトは呼出側が決める） */
+export interface RunJsonOptions {
+  model: string;
+  jsonSchema: object;
+  systemPrompt: string;
+}
+
+/** runClaudeJson の結果。result の検証は呼出側の責務 */
+export interface RunJsonOutcome {
+  result: unknown;
   costUSD: number | null;
 }
 
@@ -78,31 +92,32 @@ export function parseCliEnvelope(stdout: string): CliEnvelope {
 }
 
 /**
- * Claude Code CLI をヘッドレスで起動して分析を実行する。
+ * Claude Code CLI をヘッドレスで起動し、指定スキーマのJSONを受け取る汎用ランナー。
  * --no-session-persistence: 分析実行が ~/.claude/projects に新セッションを生む
  * 再帰汚染を防ぐ（本ダッシュボード自身がそこを読むため必須）。
  * cwd は os.tmpdir(): プロジェクトの CLAUDE.md 等を読み込ませない。
+ * result のスキーマ検証は行わない（呼出側の責務）。
  */
-export async function runClaudeAnalysis(
+export async function runClaudeJson(
   prompt: string,
-  model: AnalysisModel,
+  options: RunJsonOptions,
   config: DashboardConfig,
-): Promise<RunOutcome> {
+): Promise<RunJsonOutcome> {
   const args = [
     "-p",
     "--output-format",
     "json",
     "--json-schema",
-    JSON.stringify(ANALYSIS_JSON_SCHEMA),
+    JSON.stringify(options.jsonSchema),
     "--model",
-    model,
+    options.model,
     "--max-budget-usd",
     String(config.analysisMaxBudgetUsd),
     "--no-session-persistence",
     "--setting-sources",
     "user",
     "--system-prompt",
-    SYSTEM_PROMPT,
+    options.systemPrompt,
     "--disallowedTools",
     "Bash,Edit,Write,NotebookEdit,WebSearch,WebFetch,Task",
   ];
@@ -189,11 +204,29 @@ export async function runClaudeAnalysis(
       typeof envelope.result === "string" ? envelope.result.slice(0, 200) : "";
     throw new AnalysisError(`分析の実行に失敗しました: ${detail}`, "cli-failed");
   }
-  if (!isAnalysisResult(envelope.result)) {
+  return { result: envelope.result, costUSD: envelope.totalCostUsd };
+}
+
+/** セッション振り返り分析（固定スキーマ・固定システムプロンプト） */
+export async function runClaudeAnalysis(
+  prompt: string,
+  model: AnalysisModel,
+  config: DashboardConfig,
+): Promise<RunOutcome> {
+  const outcome = await runClaudeJson(
+    prompt,
+    {
+      model,
+      jsonSchema: ANALYSIS_JSON_SCHEMA,
+      systemPrompt: SYSTEM_PROMPT,
+    },
+    config,
+  );
+  if (!isAnalysisResult(outcome.result)) {
     throw new AnalysisError(
       "分析結果が期待する形式ではありません",
       "invalid-output",
     );
   }
-  return { result: envelope.result, costUSD: envelope.totalCostUsd };
+  return { result: outcome.result, costUSD: outcome.costUSD };
 }

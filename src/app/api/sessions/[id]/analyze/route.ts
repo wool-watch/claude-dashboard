@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const STATUS_BY_KIND: Record<AnalysisError["kind"], number> = {
   "in-flight": 409,
   "no-conversation": 400,
+  "no-analyses": 400,
   "cli-not-found": 502,
   "cli-failed": 502,
   timeout: 502,

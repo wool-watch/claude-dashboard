@@ -8,7 +8,11 @@ import {
   runPriorityAnalysis,
 } from "@/lib/analysis/priority-service";
 import type { PriorityAnalysisResult } from "@/lib/analysis/priority-types";
-import { AnalysisError, type RunJsonOutcome } from "@/lib/analysis/runner";
+import {
+  AnalysisError,
+  type RunJsonOptions,
+  type RunJsonOutcome,
+} from "@/lib/analysis/runner";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 
@@ -88,7 +92,7 @@ describe("runPriorityAnalysis", () => {
       analysisDir,
       mkAnalysis(2, "2026-07-02T00:00:00.000Z", "改善B", "その他"),
     );
-    const run = vi.fn(async () => okOutcome);
+    const run = vi.fn(async (_prompt: string, _options: RunJsonOptions) => okOutcome);
 
     await runPriorityAnalysis("opus", { run });
 
@@ -108,7 +112,7 @@ describe("runPriorityAnalysis", () => {
         mkAnalysis(n, `2026-06-${day}T00:00:00.000Z`, n === 1 ? "最古の改善" : `改善${n}`),
       );
     }
-    const run = vi.fn(async () => okOutcome);
+    const run = vi.fn(async (_prompt: string) => okOutcome);
 
     const saved = await runPriorityAnalysis("haiku", { run });
 
