@@ -2,6 +2,7 @@
 
 import { format, startOfWeek, subWeeks } from "date-fns";
 import { useMemo, useState } from "react";
+import { AnalysisSummarySection } from "@/components/AnalysisSummarySection";
 import { CalendarHeatmap } from "@/components/charts/CalendarHeatmap";
 import { ModelPieChart } from "@/components/charts/ModelPieChart";
 import { TimeseriesChart } from "@/components/charts/TimeseriesChart";
@@ -107,6 +108,8 @@ export default function DashboardPage() {
           )}
         </Section>
       </div>
+
+      <AnalysisSummarySection />
     </div>
   );
 }
