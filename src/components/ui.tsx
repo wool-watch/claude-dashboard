@@ -66,6 +66,14 @@ export function ErrorNote({ message }: { message: string }) {
   );
 }
 
+export function InfoNote({ message }: { message: string }) {
+  return (
+    <p className="rounded border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-700 dark:text-sky-300">
+      {message}
+    </p>
+  );
+}
+
 export function Skeleton({ className = "h-32" }: { className?: string }) {
   return (
     <div

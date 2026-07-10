@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface ApiState<T> {
   data: T | null;
   error: string | null;
   loading: boolean;
+  /** 即時再取得。自動更新と同様に loading を立てず、成功時のみ差し替える */
+  refetch: () => void;
 }
 
 /** 取得結果と、それがどの URL のものかの対応 */
@@ -29,9 +31,15 @@ export function useApi<T>(
   refreshIntervalMs: number = DEFAULT_REFRESH_MS,
 ): ApiState<T> {
   const [result, setResult] = useState<FetchResult<T> | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const lastUrlRef = useRef<string | null>(null);
+  const refetch = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
+    // refetch 起因の再実行は refresh 扱い（URL が変わった場合は初回ロード扱い）
+    const isRefetch = refreshKey > 0 && lastUrlRef.current === url;
+    lastUrlRef.current = url;
 
     const load = async (isRefresh: boolean): Promise<void> => {
       try {
@@ -57,7 +65,7 @@ export function useApi<T>(
       }
     };
 
-    void load(false);
+    void load(isRefetch);
 
     if (refreshIntervalMs <= 0) return () => controller.abort();
     const timer = setInterval(() => void load(true), refreshIntervalMs);
@@ -65,7 +73,7 @@ export function useApi<T>(
       clearInterval(timer);
       controller.abort();
     };
-  }, [url, refreshIntervalMs]);
+  }, [url, refreshIntervalMs, refreshKey]);
 
   // URL が変わった直後は前 URL の結果を無視し、初回ロード扱いにする
   const current = result !== null && result.url === url ? result : null;
@@ -73,5 +81,6 @@ export function useApi<T>(
     data: current?.data ?? null,
     error: current?.error ?? null,
     loading: current === null,
+    refetch,
   };
 }

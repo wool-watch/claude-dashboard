@@ -17,7 +17,7 @@ export async function GET() {
     const bySession = new Map(
       sessions.map((s) => [
         s.sessionId,
-        { title: s.title, projectId: s.projectId },
+        { title: s.title, projectId: s.projectId, projectPath: s.projectPath },
       ]),
     );
     const items = queue.items.map((item) => {
@@ -27,6 +27,7 @@ export async function GET() {
         // 消滅セッションは null（UI は sessionId 先頭で代替表示）
         title: session?.title ?? null,
         projectId: session?.projectId ?? null,
+        projectPath: session?.projectPath ?? null,
       };
     });
     return NextResponse.json({
