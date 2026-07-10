@@ -84,6 +84,17 @@ export function extractUserText(
     .join("\n");
 }
 
+/** assistant メッセージの text ブロックを改行で連結 */
+export function extractAssistantText(
+  content: RawContentBlock[] | undefined,
+): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text as string)
+    .join("\n");
+}
+
 /** 全ブロックが tool_result のとき true（空配列も防御的に true = 非ターン扱い） */
 export function isToolResultOnly(
   content: string | RawContentBlock[],
