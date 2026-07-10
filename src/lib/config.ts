@@ -6,6 +6,12 @@ export interface DashboardConfig {
   archiveDir: string;
   settingsPath: string;
   archiveSyncIntervalMs: number;
+  analysisDir: string;
+  claudeCliPath: string;
+  analysisTimeoutMs: number;
+  analysisMaxBudgetUsd: number;
+  transcriptMaxChars: number;
+  transcriptMaxCharsPerMessage: number;
   idleThresholdMs: number;
   maxFileSizeBytes: number;
   weekStartsOn: 1;
@@ -16,6 +22,14 @@ export interface DashboardConfig {
 const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_FILE_SIZE_MB = 100;
 const DEFAULT_ARCHIVE_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_ANALYSIS_TIMEOUT_MS = 180 * 1000;
+const DEFAULT_ANALYSIS_MAX_BUDGET_USD = 1;
+
+/** 正の有限数なら採用、それ以外はデフォルト */
+const positiveOr = (raw: string | undefined, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
 
 /** 毎回 process.env を読む（テストで環境変数を差し替え可能にするためキャッシュしない） */
 export function getConfig(): DashboardConfig {
@@ -36,6 +50,20 @@ export function getConfig(): DashboardConfig {
       Number.isFinite(syncIntervalRaw) && syncIntervalRaw > 0
         ? syncIntervalRaw
         : DEFAULT_ARCHIVE_SYNC_INTERVAL_MS,
+    analysisDir:
+      process.env.CLAUDE_ANALYSIS_DIR ??
+      path.join(os.homedir(), ".claude-dashboard", "analysis"),
+    claudeCliPath: process.env.CLAUDE_CLI_PATH ?? "claude",
+    analysisTimeoutMs: positiveOr(
+      process.env.ANALYSIS_TIMEOUT_MS,
+      DEFAULT_ANALYSIS_TIMEOUT_MS,
+    ),
+    analysisMaxBudgetUsd: positiveOr(
+      process.env.ANALYSIS_MAX_BUDGET_USD,
+      DEFAULT_ANALYSIS_MAX_BUDGET_USD,
+    ),
+    transcriptMaxChars: 40_000,
+    transcriptMaxCharsPerMessage: 2_000,
     idleThresholdMs:
       Number.isFinite(idleRaw) && idleRaw > 0
         ? idleRaw
