@@ -8,6 +8,7 @@ import {
   formatUSD,
 } from "@/components/format";
 import { AnalysisPanel } from "@/components/AnalysisPanel";
+import { BackButton } from "@/components/BackButton";
 import { TurnTimeline } from "@/components/TurnTimeline";
 import { Badge, ErrorNote, Section, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/use-api";
@@ -35,6 +36,9 @@ export default function SessionDetailPage() {
   return (
     <div className="space-y-4">
       <div>
+        <div className="mb-2">
+          <BackButton fallbackHref="/sessions" />
+        </div>
         <h1 className="text-lg font-semibold">
           {s.title ?? s.sessionId}
           {s.costIsEstimated && (

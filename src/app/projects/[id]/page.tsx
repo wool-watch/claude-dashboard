@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { BackButton } from "@/components/BackButton";
 import { DashboardView } from "@/components/DashboardView";
 import { formatDateTimeJa } from "@/components/format";
 import { SessionTable } from "@/components/SessionTable";
@@ -31,6 +32,9 @@ export default function ProjectDashboardPage() {
   return (
     <div className="space-y-4">
       <div>
+        <div className="mb-2">
+          <BackButton fallbackHref="/projects" />
+        </div>
         <h1 className="text-lg font-semibold">{project.displayName}</h1>
         <p className="mt-1 text-xs text-black/50 dark:text-white/50">
           {project.projectPath} ・ セッション{project.sessionCount}件 ・
