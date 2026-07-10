@@ -54,7 +54,7 @@ const archivePath = (projectId: string, uuid: string) =>
   path.join(archiveDir, projectId, `${uuid}.jsonl`);
 
 const sync = (retentionDays: 30 | 90 | 120 | 150 | 180 | null = null, now?: Date) =>
-  syncArchive(getConfig(), { retentionDays }, now);
+  syncArchive(getConfig(), { retentionDays, analysisModel: "haiku" }, now);
 
 describe("syncArchive: コピー", () => {
   it("ライブのセッションファイルをアーカイブへミラーし mtime を保存する", async () => {

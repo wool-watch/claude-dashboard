@@ -3,6 +3,7 @@ import { errorResponse } from "@/app/api/respond";
 import { ApiQueryError } from "@/lib/api/query";
 import { getConfig } from "@/lib/config";
 import {
+  parseAnalysisModel,
   parseRetentionDays,
   readSettings,
   writeSettings,
@@ -19,6 +20,7 @@ export async function GET() {
   }
 }
 
+/** body に存在するキーのみ検証してマージする部分更新（他キーは現在値を保持） */
 export async function PUT(request: Request) {
   try {
     let body: unknown;
@@ -27,11 +29,25 @@ export async function PUT(request: Request) {
     } catch {
       throw new ApiQueryError("invalid JSON body");
     }
-    const retentionDays = parseRetentionDays(
-      (body as Record<string, unknown> | null)?.retentionDays,
-    );
-    const settings = { retentionDays };
-    await writeSettings(getConfig().settingsPath, settings);
+    if (typeof body !== "object" || body === null) {
+      throw new ApiQueryError("invalid JSON body");
+    }
+    const patch = body as Record<string, unknown>;
+    const settingsPath = getConfig().settingsPath;
+    const settings = await readSettings(settingsPath);
+    let touched = false;
+    if ("retentionDays" in patch) {
+      settings.retentionDays = parseRetentionDays(patch.retentionDays);
+      touched = true;
+    }
+    if ("analysisModel" in patch) {
+      settings.analysisModel = parseAnalysisModel(patch.analysisModel);
+      touched = true;
+    }
+    if (!touched) {
+      throw new ApiQueryError("no valid settings keys in body");
+    }
+    await writeSettings(settingsPath, settings);
     return NextResponse.json(settings);
   } catch (e) {
     return errorResponse(e);
