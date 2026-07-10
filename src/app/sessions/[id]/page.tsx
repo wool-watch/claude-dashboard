@@ -7,6 +7,7 @@ import {
   formatTokens,
   formatUSD,
 } from "@/components/format";
+import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { TurnTimeline } from "@/components/TurnTimeline";
 import { Badge, ErrorNote, Section, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/use-api";
@@ -64,6 +65,10 @@ export default function SessionDetailPage() {
         />
         <StatCard label="操作時間" value={formatDurationJa(s.activeTimeMs)} />
       </div>
+
+      <Section title="AI振り返り">
+        <AnalysisPanel sessionId={s.sessionId} />
+      </Section>
 
       <Section title="ターン別タイムライン">
         <TurnTimeline turns={s.turns} />
