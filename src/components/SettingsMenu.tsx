@@ -3,9 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 
 type RetentionDays = 30 | 90 | 120 | 150 | 180 | null;
+type AnalysisModel = "haiku" | "sonnet";
 
 const RETENTION_OPTIONS: readonly RetentionDays[] = [
   30, 90, 120, 150, 180, null,
+];
+
+const MODEL_OPTIONS: ReadonlyArray<{ value: AnalysisModel; label: string }> = [
+  { value: "haiku", label: "haiku（高速・低コスト）" },
+  { value: "sonnet", label: "sonnet（高精度）" },
 ];
 
 const label = (v: RetentionDays) => (v === null ? "無制限" : `${v}日`);
@@ -13,6 +19,7 @@ const label = (v: RetentionDays) => (v === null ? "無制限" : `${v}日`);
 export function SettingsMenu() {
   const [open, setOpen] = useState(false);
   const [retention, setRetention] = useState<RetentionDays>(null);
+  const [model, setModel] = useState<AnalysisModel>("haiku");
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
 
@@ -26,8 +33,12 @@ export function SettingsMenu() {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { retentionDays: RetentionDays };
+        const body = (await res.json()) as {
+          retentionDays: RetentionDays;
+          analysisModel: AnalysisModel;
+        };
         setRetention(body.retentionDays);
+        setModel(body.analysisModel);
         setError(null);
       } catch {
         if (!controller.signal.aborted) {
@@ -55,21 +66,32 @@ export function SettingsMenu() {
     };
   }, [open]);
 
-  const select = async (value: RetentionDays) => {
-    const prev = retention;
-    setRetention(value); // 楽観更新
+  // 変更キーのみ送る部分更新（他の設定はサーバー側で保持される）
+  const put = async (patch: Record<string, unknown>, revert: () => void) => {
     setError(null);
     try {
       const res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ retentionDays: value }),
+        body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch {
-      setRetention(prev);
+      revert();
       setError("設定の保存に失敗しました");
     }
+  };
+
+  const selectRetention = async (value: RetentionDays) => {
+    const prev = retention;
+    setRetention(value); // 楽観更新
+    await put({ retentionDays: value }, () => setRetention(prev));
+  };
+
+  const selectModel = async (value: AnalysisModel) => {
+    const prev = model;
+    setModel(value); // 楽観更新
+    await put({ analysisModel: value }, () => setModel(prev));
   };
 
   return (
@@ -109,7 +131,7 @@ export function SettingsMenu() {
                   type="radio"
                   name="retention"
                   checked={retention === option}
-                  onChange={() => void select(option)}
+                  onChange={() => void selectRetention(option)}
                 />
                 {label(option)}
               </label>
@@ -117,6 +139,28 @@ export function SettingsMenu() {
           </div>
           <p className="mt-2 text-[10px] text-black/50 dark:text-white/50">
             保持期間より古いアーカイブは次回同期時に削除されます
+          </p>
+          <p className="mt-1 mb-2 border-t border-black/10 pt-2 text-xs font-semibold dark:border-white/15">
+            分析モデル
+          </p>
+          <div className="flex flex-col gap-1">
+            {MODEL_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <input
+                  type="radio"
+                  name="analysisModel"
+                  checked={model === option.value}
+                  onChange={() => void selectModel(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-black/50 dark:text-white/50">
+            セッションのAI振り返り分析に使うモデル
           </p>
           {error !== null && (
             <p className="mt-1 text-[10px] text-red-600 dark:text-red-400">
