@@ -45,6 +45,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
+      <AnalysisSummarySection />
+
       {summary.error !== null && <ErrorNote message={summary.error} />}
       {summary.loading ? (
         <Skeleton className="h-40" />
@@ -108,8 +110,6 @@ export default function DashboardPage() {
           )}
         </Section>
       </div>
-
-      <AnalysisSummarySection />
     </div>
   );
 }
