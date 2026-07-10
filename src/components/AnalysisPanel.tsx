@@ -109,8 +109,14 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
       if (!res.ok) {
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      setState({ analysis: body.analysis, isStale: body.isStale, isAnalyzing: false });
+      setState({
+        analysis: body.analysis,
+        isStale: body.isStale,
+        isAnalyzing: false,
+        isQueued: false,
+      });
       setAnalyzing(false);
+      setQueued(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "分析に失敗しました");
       setAnalyzing(false);
