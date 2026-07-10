@@ -33,19 +33,36 @@ async function scan(): Promise<SessionDetail[]> {
   const config = getConfig();
   const cache = getGlobalCache();
 
-  let projectIds: string[];
-  try {
-    const dirents = await fs.readdir(config.dataDir, { withFileTypes: true });
-    projectIds = dirents.filter((d) => d.isDirectory()).map((d) => d.name);
-  } catch {
-    return []; // データディレクトリ未作成（初回起動等）
-  }
-
   const sessions: SessionDetail[] = [];
   const livingPaths = new Set<string>();
+  const seenSessionIds = new Set<string>();
+
+  // ライブを先に走査し、アーカイブは未出の sessionId のみ採用する（ライブ優先）
+  await scanRoot(config.dataDir, config, cache, sessions, livingPaths, seenSessionIds);
+  await scanRoot(config.archiveDir, config, cache, sessions, livingPaths, seenSessionIds);
+
+  cache.prune(livingPaths);
+  return sessions.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+}
+
+async function scanRoot(
+  rootDir: string,
+  config: ReturnType<typeof getConfig>,
+  cache: ReturnType<typeof getGlobalCache>,
+  sessions: SessionDetail[],
+  livingPaths: Set<string>,
+  seenSessionIds: Set<string>,
+): Promise<void> {
+  let projectIds: string[];
+  try {
+    const dirents = await fs.readdir(rootDir, { withFileTypes: true });
+    projectIds = dirents.filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch {
+    return; // ディレクトリ未作成（初回起動等）
+  }
 
   for (const projectId of projectIds) {
-    const dirPath = path.join(config.dataDir, projectId);
+    const dirPath = path.join(rootDir, projectId);
     let files: string[];
     try {
       files = await fs.readdir(dirPath);
@@ -54,6 +71,8 @@ async function scan(): Promise<SessionDetail[]> {
     }
     for (const file of files) {
       if (!SESSION_FILE_RE.test(file)) continue;
+      const sessionId = file.replace(/\.jsonl$/i, "");
+      if (seenSessionIds.has(sessionId)) continue;
       const filePath = path.join(dirPath, file);
       let st: { mtimeMs: number; size: number };
       try {
@@ -68,22 +87,14 @@ async function scan(): Promise<SessionDetail[]> {
         continue;
       }
       livingPaths.add(filePath);
+      seenSessionIds.add(sessionId);
       const session = cache.getOrParse(filePath, st, () => {
         const { records, skippedLines } = parseJsonlLines(
           readFileSync(filePath, "utf8"),
         );
-        return buildSession(
-          records,
-          file.replace(/\.jsonl$/i, ""),
-          projectId,
-          skippedLines,
-          config,
-        );
+        return buildSession(records, sessionId, projectId, skippedLines, config);
       });
       sessions.push(session);
     }
   }
-
-  cache.prune(livingPaths);
-  return sessions.sort((a, b) => b.lastAt.localeCompare(a.lastAt));
 }
