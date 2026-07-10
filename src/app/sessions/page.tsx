@@ -14,7 +14,10 @@ function SessionsContent() {
     project !== null
       ? `/api/sessions?limit=500&project=${encodeURIComponent(project)}`
       : "/api/sessions?limit=500";
-  const { data, error, loading } = useApi<{ sessions: SessionListItem[] }>(url);
+  // キュー消化に伴うバッジ変化（待機中→分析中→分析済み）を追従する
+  const { data, error, loading, refetch } = useApi<{
+    sessions: SessionListItem[];
+  }>(url, 15_000);
 
   return (
     <Section
@@ -24,7 +27,9 @@ function SessionsContent() {
     >
       {error !== null && <ErrorNote message={error} />}
       {loading && <Skeleton className="h-64" />}
-      {data !== null && <SessionTable sessions={data.sessions} />}
+      {data !== null && (
+        <SessionTable sessions={data.sessions} selectable onQueued={refetch} />
+      )}
     </Section>
   );
 }

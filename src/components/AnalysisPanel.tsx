@@ -10,6 +10,8 @@ interface AnalysisState {
   isStale: boolean;
   /** サーバー側で分析実行中か（別タブ・再読込後も反映される） */
   isAnalyzing: boolean;
+  /** 分析キューで待機中か */
+  isQueued: boolean;
 }
 
 /** 分析中にサーバーへ完了を確認する間隔 */
@@ -33,6 +35,7 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
   const [state, setState] = useState<AnalysisState | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchState = useCallback(
@@ -44,6 +47,7 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
       const body = (await res.json()) as AnalysisState;
       setState(body);
       setAnalyzing(body.isAnalyzing);
+      setQueued(body.isQueued);
     },
     [sessionId],
   );
@@ -64,9 +68,10 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
     return () => controller.abort();
   }, [fetchState]);
 
-  // サーバー側で分析実行中の間はポーリングして完了を検知する
+  // サーバー側で分析実行中・キュー待機中の間はポーリングして進行を追従する
+  // （待機中 → 分析中 → 完了と遷移する）
   useEffect(() => {
-    if (!analyzing) return;
+    if (!analyzing && !queued) return;
     const controller = new AbortController();
     const timer = setInterval(() => {
       fetchState(controller.signal).catch(() => {
@@ -77,7 +82,17 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
       clearInterval(timer);
       controller.abort();
     };
-  }, [analyzing, fetchState]);
+  }, [analyzing, queued, fetchState]);
+
+  const releaseFromQueue = useCallback(async () => {
+    try {
+      await fetch(`/api/analysis/queue/${sessionId}`, { method: "DELETE" });
+    } finally {
+      fetchState().catch(() => {
+        // 一時的な失敗は次のポーリングに任せる
+      });
+    }
+  }, [sessionId, fetchState]);
 
   const analyze = useCallback(async () => {
     setAnalyzing(true);
@@ -107,18 +122,31 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
   const analysis = state?.analysis ?? null;
 
   const analyzeButton = (
-    <button
-      type="button"
-      onClick={() => void analyze()}
-      disabled={analyzing}
-      className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
-    >
-      {analyzing
-        ? "分析中…（数十秒かかります）"
-        : analysis !== null
-          ? "再分析"
-          : "このセッションを分析する"}
-    </button>
+    <span className="inline-flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void analyze()}
+        disabled={analyzing || queued}
+        className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
+      >
+        {analyzing
+          ? "分析中…（数十秒かかります）"
+          : queued
+            ? "キュー待機中"
+            : analysis !== null
+              ? "再分析"
+              : "このセッションを分析する"}
+      </button>
+      {queued && !analyzing && (
+        <button
+          type="button"
+          onClick={() => void releaseFromQueue()}
+          className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/60 hover:bg-black/5 dark:border-white/15 dark:text-white/60 dark:hover:bg-white/10"
+        >
+          キューから解除
+        </button>
+      )}
+    </span>
   );
 
   return (
