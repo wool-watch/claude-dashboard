@@ -4,10 +4,15 @@ import {
   PRIORITY_JSON_SCHEMA,
 } from "@/lib/analysis/priority-types";
 import { toolErrorRate } from "@/lib/analysis/metrics";
+import {
+  formatPracticeCatalog,
+  selectPractices,
+} from "@/lib/analysis/practices";
 import { runWithProvider } from "@/lib/analysis/providers";
 import type { ProviderRunOutcome } from "@/lib/analysis/providers/types";
 import { AnalysisError } from "@/lib/analysis/runner";
 import {
+  isLegacyPriorityAnalysisFile,
   readAllAnalyses,
   readPriorityAnalysis,
   writePriorityAnalysis,
@@ -53,6 +58,9 @@ const SYSTEM_PROMPT =
   "渡された複数セッションの振り返り結果（改善アクションの一覧と定量メトリクス）を横断的に分析し、" +
   "品質・作業時間・コストへの影響が最も大きい課題を選定して、具体的な改善アクションを提案してください。" +
   "判断は必ず一覧中の頻度・スコア・数値を根拠にしてください。" +
+  "各アクションは提示するベストプラクティスカタログのいずれかを根拠とし、practice にその id を引用してください。" +
+  "expectedEffect には一覧中のスコア・メトリクスの実数値（例: 検証スコア2、エラー率25%）を引用して改善見込みを述べてください。" +
+  "snippet にはコピペしてそのまま使える完成文だけを書き、説明文やプレースホルダは入れないでください（該当する成果物が無ければ空文字）。" +
   "ツールは一切使用せず、指定されたJSONスキーマに従って日本語で出力してください。";
 
 /** 改善点1行に添える定量ダイジェスト（例: 変更+120/-80行・エラー率25%） */
@@ -86,6 +94,7 @@ function buildPriorityPrompt(recent: StoredAnalysis[]): string {
       );
     })
     .join("\n");
+  const practiceLines = formatPracticeCatalog(selectPractices(categoryCounts));
 
   return `以下は Claude Code のセッション振り返り（AI分析）で挙がった改善アクションの一覧です（直近${recent.length}セッション分、新しい順）。
 各行末尾の括弧内は、そのセッションのハーネス実践スコア（1〜5）とログから機械算出した定量メトリクスです。
@@ -96,11 +105,20 @@ ${countLines}
 === 改善アクション一覧 ===
 ${itemLines}
 
+=== ベストプラクティスカタログ（アクションの根拠。practice はこの id から選ぶ） ===
+${practiceLines}
+
 この一覧を横断的に見て、品質・作業時間・コストへの影響が最も大きく、優先して取り組むべき課題を1〜3件選んでください。各課題について:
 - point: 課題の内容
 - category: 最も当てはまるカテゴリ
 - reason: 最優先と判断した理由（頻度・影響度・数値の観点から具体的に）
-- actions: 次のセッションでそのまま実行できる具体的なアクション（1〜5件）
+- actions: ベストプラクティスを根拠にした具体的アクション（1〜3件）。各アクションは:
+  - title: 短い一文タイトル
+  - kind: 実施手段の種別（依頼プロンプト / CLAUDE.md / ワークフロー / 設定・ツール）
+  - practice: 根拠にしたカタログの id
+  - how: 次のセッションでそのまま実行できる具体的な手順
+  - expectedEffect: 改善が見込める軸・メトリクスを、上の一覧の実数値を引用して述べる
+  - snippet: コピペしてそのまま使える完成文（CLAUDE.md への追記文や依頼プロンプトのテンプレート）。該当する成果物が無ければ空文字
 あわせて summary に全体講評（2〜3文）を出力してください。`;
 }
 
@@ -167,7 +185,7 @@ export async function runPriorityAnalysis(
     }
 
     const stored: StoredPriorityAnalysis = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       analyzedAt: new Date().toISOString(),
       model: resolvedModel,
       provider,
@@ -185,9 +203,19 @@ export async function runPriorityAnalysis(
   return promise;
 }
 
-/** 保存済みの優先課題分析（未実行なら null。projectId 指定でプロジェクト別） */
-export async function getPriorityAnalysis(
-  projectId?: string,
-): Promise<StoredPriorityAnalysis | null> {
-  return readPriorityAnalysis(getConfig().analysisDir, projectId);
+/**
+ * 保存済みの優先課題分析の状態（projectId 指定でプロジェクト別）。
+ * isLegacy は旧形式（v1/v2）が保存されている（= 再分析すると新形式になる）ことを示す。
+ */
+export async function getPriorityAnalysisState(projectId?: string): Promise<{
+  priority: StoredPriorityAnalysis | null;
+  isLegacy: boolean;
+}> {
+  const analysisDir = getConfig().analysisDir;
+  const priority = await readPriorityAnalysis(analysisDir, projectId);
+  if (priority !== null) return { priority, isLegacy: false };
+  return {
+    priority: null,
+    isLegacy: await isLegacyPriorityAnalysisFile(analysisDir, projectId),
+  };
 }
