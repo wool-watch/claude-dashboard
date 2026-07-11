@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import type { RunOutcome } from "@/lib/analysis/runner";
-import { AnalysisError, runClaudeAnalysis } from "@/lib/analysis/runner";
+import { runWithProvider } from "@/lib/analysis/providers";
+import type { ProviderRunOutcome } from "@/lib/analysis/providers/types";
+import {
+  AnalysisError,
+  SESSION_ANALYSIS_SYSTEM_PROMPT,
+} from "@/lib/analysis/runner";
 import {
   readAllAnalyses,
   readAnalysis,
@@ -11,9 +15,10 @@ import {
 } from "@/lib/analysis/store";
 import { buildTranscript } from "@/lib/analysis/transcript";
 import type { SessionAnalysisStatus, StoredAnalysis } from "@/lib/analysis/types";
+import { ANALYSIS_JSON_SCHEMA, isAnalysisResult } from "@/lib/analysis/types";
 import type { DashboardConfig } from "@/lib/config";
 import { getConfig } from "@/lib/config";
-import type { AnalysisModel } from "@/lib/settings/settings";
+import type { AppSettings } from "@/lib/settings/settings";
 import { readSettings } from "@/lib/settings/settings";
 import { getSession, getSessionFileRef } from "@/lib/store/repository";
 
@@ -24,10 +29,15 @@ export interface AnalysisWithStaleness {
 
 type RunFn = (
   prompt: string,
-  model: AnalysisModel,
+  options: {
+    model: string;
+    jsonSchema: object;
+    systemPrompt: string;
+    signal?: AbortSignal;
+  },
+  settings: AppSettings,
   config: DashboardConfig,
-  signal?: AbortSignal,
-) => Promise<RunOutcome>;
+) => Promise<ProviderRunOutcome>;
 
 declare global {
   // Next.js dev の HMR でモジュールが再評価されても実行中の分析を追跡し続ける
@@ -65,7 +75,7 @@ ${transcript}`;
  */
 export async function analyzeSession(
   sessionId: string,
-  deps: { run: RunFn } = { run: runClaudeAnalysis },
+  deps: { run: RunFn } = { run: runWithProvider },
   opts: { signal?: AbortSignal } = {},
 ): Promise<StoredAnalysis | null> {
   const inflight = getInflightMap();
@@ -94,19 +104,33 @@ export async function analyzeSession(
     }
 
     const settings = await readSettings(config.settingsPath);
+    const provider = settings.analysisProvider;
+    const model = settings.providers[provider].model;
     const outcome = await deps.run(
       buildPrompt(transcript.text),
-      settings.providers.claude.model,
+      {
+        model,
+        jsonSchema: ANALYSIS_JSON_SCHEMA,
+        systemPrompt: SESSION_ANALYSIS_SYSTEM_PROMPT,
+        signal: opts.signal,
+      },
+      settings,
       config,
-      opts.signal,
     );
+    if (!isAnalysisResult(outcome.result)) {
+      throw new AnalysisError(
+        "分析結果が期待する形式ではありません",
+        "invalid-output",
+      );
+    }
 
     const stored: StoredAnalysis = {
       schemaVersion: 1,
       sessionId,
       projectId: ref.projectId,
       analyzedAt: new Date().toISOString(),
-      model: settings.providers.claude.model,
+      model,
+      provider,
       sourceMtimeMs: ref.mtimeMs,
       sourceSize: ref.size,
       sessionLastAt: session.lastAt,

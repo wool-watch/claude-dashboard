@@ -1,5 +1,5 @@
-import type { AnalysisModel } from "@/lib/settings/settings";
-import { ANALYSIS_MODEL_OPTIONS } from "@/lib/settings/settings";
+import type { ProviderId } from "@/lib/settings/settings";
+import { PROVIDER_IDS } from "@/lib/settings/settings";
 
 export const IMPROVEMENT_CATEGORIES = [
   "指示の具体性",
@@ -50,7 +50,10 @@ export interface StoredAnalysis {
   sessionId: string;
   projectId: string;
   analyzedAt: string;
-  model: AnalysisModel;
+  /** 分析に使ったモデル名（プロバイダごとに自由形式） */
+  model: string;
+  /** 分析に使ったプロバイダ（欠損 = 旧データ = claude） */
+  provider?: ProviderId;
   /** 分析時点のセッションファイル stat（鮮度判定用） */
   sourceMtimeMs: number;
   sourceSize: number;
@@ -105,7 +108,10 @@ export function isStoredAnalysis(v: unknown): v is StoredAnalysis {
   if (typeof v.sessionId !== "string") return false;
   if (typeof v.projectId !== "string") return false;
   if (typeof v.analyzedAt !== "string") return false;
-  if (!ANALYSIS_MODEL_OPTIONS.includes(v.model as AnalysisModel)) return false;
+  if (typeof v.model !== "string" || v.model === "") return false;
+  if (v.provider !== undefined && !PROVIDER_IDS.includes(v.provider as ProviderId)) {
+    return false;
+  }
   if (typeof v.sourceMtimeMs !== "number") return false;
   if (typeof v.sourceSize !== "number") return false;
   if (typeof v.sessionLastAt !== "string") return false;

@@ -1,5 +1,7 @@
 import type { ImprovementCategory } from "@/lib/analysis/types";
 import { IMPROVEMENT_CATEGORIES } from "@/lib/analysis/types";
+import type { ProviderId } from "@/lib/settings/settings";
+import { PROVIDER_IDS } from "@/lib/settings/settings";
 
 /**
  * 優先課題分析で選べるモデル。
@@ -42,7 +44,10 @@ export interface PriorityAnalysisResult {
 export interface StoredPriorityAnalysis {
   schemaVersion: 1;
   analyzedAt: string;
-  model: PriorityAnalysisModel;
+  /** 分析に使ったモデル名（プロバイダごとに自由形式） */
+  model: string;
+  /** 分析に使ったプロバイダ（欠損 = 旧データ = claude） */
+  provider?: ProviderId;
   /** 対象プロジェクト（グローバル分析は undefined） */
   projectId?: string;
   /** 入力に使った振り返り分析の件数 */
@@ -93,7 +98,10 @@ export function isStoredPriorityAnalysis(
   if (!isObject(v)) return false;
   if (v.schemaVersion !== 1) return false;
   if (typeof v.analyzedAt !== "string") return false;
-  if (parsePriorityAnalysisModel(v.model) === null) return false;
+  if (typeof v.model !== "string" || v.model === "") return false;
+  if (v.provider !== undefined && !PROVIDER_IDS.includes(v.provider as ProviderId)) {
+    return false;
+  }
   if (v.projectId !== undefined && typeof v.projectId !== "string") return false;
   if (typeof v.analyzedSessionCount !== "number") return false;
   if (v.costUSD !== null && typeof v.costUSD !== "number") return false;

@@ -1,13 +1,11 @@
-import type {
-  PriorityAnalysisModel,
-  StoredPriorityAnalysis,
-} from "@/lib/analysis/priority-types";
+import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
 import {
   isPriorityAnalysisResult,
   PRIORITY_JSON_SCHEMA,
 } from "@/lib/analysis/priority-types";
-import type { RunJsonOptions, RunJsonOutcome } from "@/lib/analysis/runner";
-import { AnalysisError, runClaudeJson } from "@/lib/analysis/runner";
+import { runWithProvider } from "@/lib/analysis/providers";
+import type { ProviderRunOutcome } from "@/lib/analysis/providers/types";
+import { AnalysisError } from "@/lib/analysis/runner";
 import {
   readAllAnalyses,
   readPriorityAnalysis,
@@ -16,12 +14,15 @@ import {
 import type { StoredAnalysis } from "@/lib/analysis/types";
 import type { DashboardConfig } from "@/lib/config";
 import { getConfig } from "@/lib/config";
+import type { AppSettings } from "@/lib/settings/settings";
+import { readSettings } from "@/lib/settings/settings";
 
 type RunJsonFn = (
   prompt: string,
-  options: RunJsonOptions,
+  options: { model: string; jsonSchema: object; systemPrompt: string },
+  settings: AppSettings,
   config: DashboardConfig,
-) => Promise<RunJsonOutcome>;
+) => Promise<ProviderRunOutcome>;
 
 /** 入力に使う振り返り分析の最大件数（sessionLastAt 降順） */
 const RECENT_ANALYSES_LIMIT = 20;
@@ -96,8 +97,8 @@ ${itemLines}
  * - 対象の保存済み分析が0件なら AnalysisError("no-analyses")
  */
 export async function runPriorityAnalysis(
-  model: PriorityAnalysisModel,
-  deps: { run: RunJsonFn } = { run: runClaudeJson },
+  model: string | undefined,
+  deps: { run: RunJsonFn } = { run: runWithProvider },
   projectId?: string,
 ): Promise<StoredPriorityAnalysis> {
   const inflight = getInflightMap();
@@ -127,9 +128,21 @@ export async function runPriorityAnalysis(
       .sort((a, b) => b.sessionLastAt.localeCompare(a.sessionLastAt))
       .slice(0, RECENT_ANALYSES_LIMIT);
 
+    const settings = await readSettings(config.settingsPath);
+    const provider = settings.analysisProvider;
+    // model オーバーライドは claude のみ（haiku/sonnet/opus）。他プロバイダは設定モデル固定
+    const resolvedModel =
+      provider === "claude"
+        ? (model ?? settings.providers.claude.model)
+        : settings.providers[provider].model;
     const outcome = await deps.run(
       buildPriorityPrompt(recent),
-      { model, jsonSchema: PRIORITY_JSON_SCHEMA, systemPrompt: SYSTEM_PROMPT },
+      {
+        model: resolvedModel,
+        jsonSchema: PRIORITY_JSON_SCHEMA,
+        systemPrompt: SYSTEM_PROMPT,
+      },
+      settings,
       config,
     );
     if (!isPriorityAnalysisResult(outcome.result)) {
@@ -142,7 +155,8 @@ export async function runPriorityAnalysis(
     const stored: StoredPriorityAnalysis = {
       schemaVersion: 1,
       analyzedAt: new Date().toISOString(),
-      model,
+      model: resolvedModel,
+      provider,
       ...(projectId !== undefined && { projectId }),
       analyzedSessionCount: recent.length,
       costUSD: outcome.costUSD,

@@ -25,7 +25,8 @@ export interface RunOutcome {
   costUSD: number | null;
 }
 
-const SYSTEM_PROMPT =
+/** セッション振り返り分析のシステムプロンプト（プロバイダ共通） */
+export const SESSION_ANALYSIS_SYSTEM_PROMPT =
   "あなたはAIコーディングアシスタント「Claude Code」の利用方法を改善するコーチです。" +
   "渡されたセッションのやり取りを分析し、ユーザー側の指示の出し方・作業の進め方について振り返りを行います。" +
   "アシスタント側の応答品質の評価ではなく、ユーザーが次のセッションでより良い結果を得るための観点に集中してください。" +
@@ -43,7 +44,7 @@ export async function runClaudeAnalysis(
     {
       model,
       jsonSchema: ANALYSIS_JSON_SCHEMA,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: SESSION_ANALYSIS_SYSTEM_PROMPT,
       signal,
     },
     config,
