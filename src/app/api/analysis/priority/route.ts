@@ -31,14 +31,21 @@ export async function POST(req: NextRequest) {
     } catch {
       // body 不正は model 検証で 400 にする
     }
-    const model = parsePriorityAnalysisModel(
-      (body as { model?: unknown } | null)?.model,
-    );
-    if (model === null) {
-      return NextResponse.json(
-        { error: "model は haiku / sonnet / opus のいずれかを指定してください" },
-        { status: 400 },
-      );
+    // model は省略可（省略時はアクティブプロバイダの設定モデル）。
+    // 指定時のみ検証する（claude 以外のプロバイダでは指定は無視される）
+    const rawModel = (body as { model?: unknown } | null)?.model;
+    let model: string | undefined;
+    if (rawModel === undefined) {
+      model = undefined;
+    } else {
+      const parsed = parsePriorityAnalysisModel(rawModel);
+      if (parsed === null) {
+        return NextResponse.json(
+          { error: "model は haiku / sonnet / opus のいずれかを指定してください" },
+          { status: 400 },
+        );
+      }
+      model = parsed;
     }
     const project = (body as { project?: unknown } | null)?.project;
     if (
