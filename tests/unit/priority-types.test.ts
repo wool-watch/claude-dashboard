@@ -13,7 +13,7 @@ const action = mkPriorityAction();
 
 const issue = {
   point: "着手前の計画・タスク分解が不足している",
-  category: "計画不足",
+  category: "計画不足" as const,
   reason: "直近の分析で最も頻出しているため",
   actions: [action],
 };

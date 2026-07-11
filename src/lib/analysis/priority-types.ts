@@ -1,3 +1,11 @@
+import type {
+  PracticeId,
+  PriorityActionKind,
+} from "@/lib/analysis/practices";
+import {
+  PRACTICE_IDS,
+  PRIORITY_ACTION_KINDS,
+} from "@/lib/analysis/practices";
 import type { ImprovementCategory } from "@/lib/analysis/types";
 import { IMPROVEMENT_CATEGORIES } from "@/lib/analysis/types";
 import type { ProviderId } from "@/lib/settings/settings";
@@ -18,14 +26,30 @@ export function parsePriorityAnalysisModel(
     : null;
 }
 
+/** ベストプラクティスを根拠にした構造化アクション1件 */
+export interface PriorityAction {
+  /** 短い一文タイトル */
+  title: string;
+  /** 実施手段の種別 */
+  kind: PriorityActionKind;
+  /** 根拠にしたベストプラクティスカタログの id */
+  practice: PracticeId;
+  /** 具体的な実施手順 */
+  how: string;
+  /** 改善が見込める5軸・メトリクスと入力実数値を明示した期待効果 */
+  expectedEffect: string;
+  /** コピペしてそのまま使える完成文（CLAUDE.md 追記文・依頼テンプレ等）。不要なら空文字 */
+  snippet: string;
+}
+
 /** AIが選定した最優先課題1件 */
 export interface PriorityIssue {
   point: string;
   category: ImprovementCategory;
   /** 最優先と判断した理由（頻度・影響度の観点） */
   reason: string;
-  /** 次のセッションでそのまま実行できる具体的アクション 1..5件 */
-  actions: string[];
+  /** ベストプラクティスを根拠にした構造化アクション 1..3件 */
+  actions: PriorityAction[];
 }
 
 /** CLI から --json-schema で受け取る優先課題分析の結果本体 */
@@ -42,7 +66,7 @@ export interface PriorityAnalysisResult {
  * プロジェクト別は analysisDir/priority-analysis.<projectId>.json に各1件。
  */
 export interface StoredPriorityAnalysis {
-  schemaVersion: 2;
+  schemaVersion: 3;
   analyzedAt: string;
   /** 分析に使ったモデル名（プロバイダごとに自由形式） */
   model: string;
@@ -64,6 +88,19 @@ const isObject = (v: unknown): v is AnyRecord =>
 const isNonEmptyString = (v: unknown): v is string =>
   typeof v === "string" && v.length > 0;
 
+function isPriorityAction(v: unknown): v is PriorityAction {
+  if (!isObject(v)) return false;
+  if (!isNonEmptyString(v.title)) return false;
+  if (!PRIORITY_ACTION_KINDS.includes(v.kind as PriorityActionKind)) {
+    return false;
+  }
+  if (!PRACTICE_IDS.includes(v.practice as PracticeId)) return false;
+  if (!isNonEmptyString(v.how)) return false;
+  if (!isNonEmptyString(v.expectedEffect)) return false;
+  // snippet は「不要」を空文字で表現するため空を許容する（欠損は不可）
+  return typeof v.snippet === "string";
+}
+
 function isPriorityIssue(v: unknown): v is PriorityIssue {
   if (!isObject(v)) return false;
   if (!isNonEmptyString(v.point)) return false;
@@ -75,8 +112,8 @@ function isPriorityIssue(v: unknown): v is PriorityIssue {
   return (
     Array.isArray(actions) &&
     actions.length >= 1 &&
-    actions.length <= 5 &&
-    actions.every(isNonEmptyString)
+    actions.length <= 3 &&
+    actions.every(isPriorityAction)
   );
 }
 
@@ -96,7 +133,7 @@ export function isStoredPriorityAnalysis(
   v: unknown,
 ): v is StoredPriorityAnalysis {
   if (!isObject(v)) return false;
-  if (v.schemaVersion !== 2) return false;
+  if (v.schemaVersion !== 3) return false;
   if (typeof v.analyzedAt !== "string") return false;
   if (typeof v.model !== "string" || v.model === "") return false;
   if (v.provider !== undefined && !PROVIDER_IDS.includes(v.provider as ProviderId)) {
@@ -108,7 +145,26 @@ export function isStoredPriorityAnalysis(
   return isPriorityAnalysisResult(v.result);
 }
 
-/** claude -p --json-schema に渡すスキーマ（PriorityAnalysisResult と対応） */
+/**
+ * 旧 v1/v2 保存ファイルの最小判定。
+ * 「旧形式（要再分析）」として UI に案内を出すために使う。
+ */
+export function isLegacyStoredPriorityAnalysis(
+  v: unknown,
+): v is { schemaVersion: 1 | 2 } {
+  return (
+    isObject(v) &&
+    (v.schemaVersion === 1 || v.schemaVersion === 2) &&
+    typeof v.analyzedAt === "string"
+  );
+}
+
+/**
+ * claude -p --json-schema に渡すスキーマ（PriorityAnalysisResult と対応）。
+ * 注意: actions のネスト2段は許容する（openai-compat は strict 拒否時に
+ * プロンプト埋め込みへフォールバックする）。strict モード（全 required）対応のため
+ * 全フィールドを required にし、snippet の省略は空文字で表現する。
+ */
 export const PRIORITY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -129,8 +185,53 @@ export const PRIORITY_JSON_SCHEMA = {
           actions: {
             type: "array",
             minItems: 1,
-            maxItems: 5,
-            items: { type: "string", maxLength: 200 },
+            maxItems: 3,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "title",
+                "kind",
+                "practice",
+                "how",
+                "expectedEffect",
+                "snippet",
+              ],
+              properties: {
+                title: {
+                  type: "string",
+                  maxLength: 100,
+                  description: "アクションの短い一文タイトル",
+                },
+                kind: {
+                  type: "string",
+                  enum: [...PRIORITY_ACTION_KINDS],
+                  description: "実施手段の種別",
+                },
+                practice: {
+                  type: "string",
+                  enum: [...PRACTICE_IDS],
+                  description: "根拠にしたベストプラクティスカタログの id",
+                },
+                how: {
+                  type: "string",
+                  maxLength: 400,
+                  description: "具体的な実施手順",
+                },
+                expectedEffect: {
+                  type: "string",
+                  maxLength: 300,
+                  description:
+                    "改善が見込める軸・メトリクス名と入力中の実数値を明示した期待効果",
+                },
+                snippet: {
+                  type: "string",
+                  maxLength: 800,
+                  description:
+                    "コピペしてそのまま使える完成文（CLAUDE.md 追記文・依頼テンプレ等）。不要なら空文字",
+                },
+              },
+            },
           },
         },
       },
