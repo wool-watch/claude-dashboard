@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDateTimeJa, formatUSD } from "@/components/format";
 import { Badge, EmptyState, Skeleton } from "@/components/ui";
+import {
+  cacheReadRatio,
+  toolErrorRate,
+  usdPer100Lines,
+  type SessionMetrics,
+} from "@/lib/analysis/metrics";
 import { PROVIDER_LABELS } from "@/lib/analysis/provider-labels";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 
@@ -28,6 +34,50 @@ function ScoreCard({ label, value }: { label: string; value: number }) {
           /5
         </span>
       </div>
+    </div>
+  );
+}
+
+const percent = (ratio: number | null): string =>
+  ratio === null ? "—" : `${Math.round(ratio * 100)}%`;
+
+function MetricChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1 rounded-md border border-black/10 px-2 py-1 dark:border-white/15">
+      <span className="text-black/50 dark:text-white/50">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </span>
+  );
+}
+
+/** JSONL から機械算出した定量メトリクスの表示行 */
+function MetricsRow({ metrics }: { metrics: SessionMetrics }) {
+  const per100 = usdPer100Lines(metrics);
+  return (
+    <div className="flex flex-wrap gap-1.5 text-xs">
+      <MetricChip
+        label="推定変更行数"
+        value={`+${metrics.estimatedLinesAdded} / -${metrics.estimatedLinesRemoved}`}
+      />
+      <MetricChip
+        label="編集ファイル"
+        value={
+          metrics.reEditedFileCount > 0
+            ? `${metrics.editedFileCount}（再編集 ${metrics.reEditedFileCount}）`
+            : `${metrics.editedFileCount}`
+        }
+      />
+      <MetricChip label="ツールエラー率" value={percent(toolErrorRate(metrics))} />
+      <MetricChip
+        label="テスト"
+        value={`${metrics.testRunCount}回 / 失敗${metrics.testFailCount}`}
+      />
+      <MetricChip label="割り込み" value={`${metrics.interruptionCount}回`} />
+      <MetricChip label="キャッシュ読取" value={percent(cacheReadRatio(metrics))} />
+      <MetricChip
+        label="コスト効率"
+        value={per100 === null ? "—" : `${formatUSD(per100)}/100行`}
+      />
     </div>
   );
 }
@@ -160,24 +210,40 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
     <div className="space-y-3">
       {analysis === null ? (
         <div className="space-y-2 text-center">
-          <EmptyState message="まだ分析されていません。設定したAIプロバイダでこのセッションのやり取りを分析し、指示の良かった点・改善点を振り返ります" />
+          <EmptyState
+            message={
+              state?.isStale === true
+                ? "旧形式の分析データです。再分析すると新しい指標（ハーネス実践5軸・定量メトリクス）で表示されます"
+                : "まだ分析されていません。設定したAIプロバイダでこのセッションのやり取りを分析し、品質・工数・コストの観点で振り返ります"
+            }
+          />
           <div>{analyzeButton}</div>
         </div>
       ) : (
         <>
           <p className="text-sm">{analysis.result.summary}</p>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <ScoreCard label="計画・分解" value={analysis.result.scores.planning} />
             <ScoreCard
-              label="指示の明確さ"
-              value={analysis.result.scores.instructionClarity}
+              label="コンテキスト提供"
+              value={analysis.result.scores.contextProvision}
             />
-            <ScoreCard label="進行の効率" value={analysis.result.scores.efficiency} />
             <ScoreCard
-              label="目的の達成度"
-              value={analysis.result.scores.goalAchievement}
+              label="検証・テスト"
+              value={analysis.result.scores.verification}
+            />
+            <ScoreCard
+              label="軌道安定性"
+              value={analysis.result.scores.trajectoryStability}
+            />
+            <ScoreCard
+              label="スコープ規律"
+              value={analysis.result.scores.scopeDiscipline}
             />
           </div>
+
+          <MetricsRow metrics={analysis.metrics} />
 
           <div className="grid gap-3 lg:grid-cols-2">
             <div>
@@ -199,9 +265,9 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
               </h3>
               <ul className="space-y-1 text-sm">
                 {analysis.result.improvements.map((item) => (
-                  <li key={item.point} className="flex flex-wrap items-center gap-1.5">
+                  <li key={item.action} className="flex flex-wrap items-center gap-1.5">
                     <Badge tone="amber">{item.category}</Badge>
-                    <span>{item.point}</span>
+                    <span>{item.action}</span>
                   </li>
                 ))}
               </ul>

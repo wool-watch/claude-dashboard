@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Bar,
   BarChart,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -45,14 +46,25 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
 
   const trend = dto.weeklyScoreTrend.map((w) => ({
     weekStart: w.weekStart.slice(5), // MM-dd
-    指示の明確さ: Number(w.avgScores.instructionClarity.toFixed(2)),
-    進行の効率: Number(w.avgScores.efficiency.toFixed(2)),
-    目的の達成度: Number(w.avgScores.goalAchievement.toFixed(2)),
+    計画分解: Number(w.avgScores.planning.toFixed(2)),
+    コンテキスト: Number(w.avgScores.contextProvision.toFixed(2)),
+    検証テスト: Number(w.avgScores.verification.toFixed(2)),
+    軌道安定性: Number(w.avgScores.trajectoryStability.toFixed(2)),
+    スコープ規律: Number(w.avgScores.scopeDiscipline.toFixed(2)),
+  }));
+
+  const efficiencyTrend = dto.weeklyMetricsTrend.map((w) => ({
+    weekStart: w.weekStart.slice(5), // MM-dd
+    "行/$": w.linesPerUSD === null ? null : Number(w.linesPerUSD.toFixed(1)),
+    "行/時間":
+      w.linesPerActiveHour === null
+        ? null
+        : Number(w.linesPerActiveHour.toFixed(1)),
   }));
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <div className="rounded-lg border border-black/10 p-3 dark:border-white/15">
           <div className="text-xs text-black/50 dark:text-white/50">
             分析済みセッション
@@ -61,9 +73,20 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
             {dto.analyzedCount}
           </div>
         </div>
-        <AvgScoreCard label="指示の明確さ（平均）" value={dto.avgScores.instructionClarity} />
-        <AvgScoreCard label="進行の効率（平均）" value={dto.avgScores.efficiency} />
-        <AvgScoreCard label="目的の達成度（平均）" value={dto.avgScores.goalAchievement} />
+        <AvgScoreCard label="計画・分解（平均）" value={dto.avgScores.planning} />
+        <AvgScoreCard
+          label="コンテキスト提供（平均）"
+          value={dto.avgScores.contextProvision}
+        />
+        <AvgScoreCard label="検証・テスト（平均）" value={dto.avgScores.verification} />
+        <AvgScoreCard
+          label="軌道安定性（平均）"
+          value={dto.avgScores.trajectoryStability}
+        />
+        <AvgScoreCard
+          label="スコープ規律（平均）"
+          value={dto.avgScores.scopeDiscipline}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -129,22 +152,35 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
                   width={24}
                 />
                 <Tooltip {...CHART_TOOLTIP_PROPS} cursor={CHART_CURSOR} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line
                   type="monotone"
-                  dataKey="指示の明確さ"
+                  dataKey="計画分解"
                   stroke="var(--chart-1)"
                   dot={false}
                 />
                 <Line
                   type="monotone"
-                  dataKey="進行の効率"
+                  dataKey="コンテキスト"
                   stroke="var(--chart-2)"
                   dot={false}
                 />
                 <Line
                   type="monotone"
-                  dataKey="目的の達成度"
+                  dataKey="検証テスト"
                   stroke="var(--chart-3)"
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="軌道安定性"
+                  stroke="var(--chart-4)"
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="スコープ規律"
+                  stroke="var(--chart-5)"
                   dot={false}
                 />
               </LineChart>
@@ -155,13 +191,55 @@ function SummaryBody({ dto }: { dto: AnalysisSummaryDto }) {
 
       <div>
         <h3 className="mb-2 text-xs font-semibold text-black/60 dark:text-white/60">
-          最近の改善ポイント
+          コスト・工数効率の推移（推定変更行数ベース）
+        </h3>
+        {efficiencyTrend.length < 2 ? (
+          <EmptyState message="2週間分以上の分析が集まると推移が表示されます" />
+        ) : (
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={efficiencyTrend} margin={{ left: 8, right: 16 }}>
+              <XAxis
+                dataKey="weekStart"
+                tick={CHART_AXIS_TICK}
+                axisLine={{ stroke: CHART_GRID }}
+                tickLine={{ stroke: CHART_GRID }}
+              />
+              <YAxis
+                tick={CHART_AXIS_TICK}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+              />
+              <Tooltip {...CHART_TOOLTIP_PROPS} cursor={CHART_CURSOR} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line
+                type="monotone"
+                dataKey="行/$"
+                stroke="var(--chart-1)"
+                dot={false}
+                connectNulls
+              />
+              <Line
+                type="monotone"
+                dataKey="行/時間"
+                stroke="var(--chart-2)"
+                dot={false}
+                connectNulls
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-xs font-semibold text-black/60 dark:text-white/60">
+          最近の改善アクション
         </h3>
         <ul className="space-y-1 text-sm">
           {dto.recentImprovements.map((item) => (
-            <li key={item.point} className="flex flex-wrap items-center gap-1.5">
+            <li key={item.action} className="flex flex-wrap items-center gap-1.5">
               <Badge tone="amber">{item.category}</Badge>
-              <span>{item.point}</span>
+              <span>{item.action}</span>
             </li>
           ))}
         </ul>
