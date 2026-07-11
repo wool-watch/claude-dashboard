@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
-import { isStoredPriorityAnalysis } from "@/lib/analysis/priority-types";
+import {
+  isLegacyStoredPriorityAnalysis,
+  isStoredPriorityAnalysis,
+} from "@/lib/analysis/priority-types";
 import type { StoredQueue } from "@/lib/analysis/queue-types";
 import { isStoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
@@ -97,6 +100,24 @@ export async function readPriorityAnalysis(
     return isStoredPriorityAnalysis(parsed) ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 保存済みの優先課題分析が旧形式（v1/v2）かどうか。
+ * UI で「再分析すると新形式になる」案内を出すために使う。
+ */
+export async function isLegacyPriorityAnalysisFile(
+  analysisDir: string,
+  projectId?: string,
+): Promise<boolean> {
+  const fileName = priorityFileNameFor(projectId);
+  if (fileName === null) return false;
+  try {
+    const text = await fs.readFile(path.join(analysisDir, fileName), "utf8");
+    return isLegacyStoredPriorityAnalysis(JSON.parse(text));
+  } catch {
+    return false;
   }
 }
 
