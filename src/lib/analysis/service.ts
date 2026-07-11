@@ -96,7 +96,7 @@ export async function analyzeSession(
     const settings = await readSettings(config.settingsPath);
     const outcome = await deps.run(
       buildPrompt(transcript.text),
-      settings.analysisModel,
+      settings.providers.claude.model,
       config,
       opts.signal,
     );
@@ -106,7 +106,7 @@ export async function analyzeSession(
       sessionId,
       projectId: ref.projectId,
       analyzedAt: new Date().toISOString(),
-      model: settings.analysisModel,
+      model: settings.providers.claude.model,
       sourceMtimeMs: ref.mtimeMs,
       sourceSize: ref.size,
       sessionLastAt: session.lastAt,

@@ -35,10 +35,10 @@ export function SettingsMenu() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = (await res.json()) as {
           retentionDays: RetentionDays;
-          analysisModel: AnalysisModel;
+          providers: { claude: { model: AnalysisModel } };
         };
         setRetention(body.retentionDays);
-        setModel(body.analysisModel);
+        setModel(body.providers.claude.model);
         setError(null);
       } catch {
         if (!controller.signal.aborted) {
@@ -91,7 +91,7 @@ export function SettingsMenu() {
   const selectModel = async (value: AnalysisModel) => {
     const prev = model;
     setModel(value); // 楽観更新
-    await put({ analysisModel: value }, () => setModel(prev));
+    await put({ providers: { claude: { model: value } } }, () => setModel(prev));
   };
 
   return (

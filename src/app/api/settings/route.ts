@@ -3,9 +3,11 @@ import { errorResponse } from "@/app/api/respond";
 import { ApiQueryError } from "@/lib/api/query";
 import { getConfig } from "@/lib/config";
 import {
-  parseAnalysisModel,
+  applyProvidersPatch,
+  parseAnalysisProvider,
   parseRetentionDays,
   readSettings,
+  toPublicSettings,
   writeSettings,
 } from "@/lib/settings/settings";
 
@@ -14,7 +16,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const settings = await readSettings(getConfig().settingsPath);
-    return NextResponse.json(settings);
+    return NextResponse.json(toPublicSettings(settings));
   } catch (e) {
     return errorResponse(e);
   }
@@ -40,15 +42,18 @@ export async function PUT(request: Request) {
       settings.retentionDays = parseRetentionDays(patch.retentionDays);
       touched = true;
     }
-    if ("analysisModel" in patch) {
-      settings.analysisModel = parseAnalysisModel(patch.analysisModel);
+    if ("analysisProvider" in patch) {
+      settings.analysisProvider = parseAnalysisProvider(patch.analysisProvider);
       touched = true;
+    }
+    if ("providers" in patch) {
+      touched = applyProvidersPatch(settings, patch.providers) || touched;
     }
     if (!touched) {
       throw new ApiQueryError("no valid settings keys in body");
     }
     await writeSettings(settingsPath, settings);
-    return NextResponse.json(settings);
+    return NextResponse.json(toPublicSettings(settings));
   } catch (e) {
     return errorResponse(e);
   }
