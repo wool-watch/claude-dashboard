@@ -30,6 +30,7 @@
 # local-only planning docs (not published)
 /IMPLEMENTATION_PLAN.md
 /DETAILED_DESIGN.md
+/DESIGN_QUEUE_AND_PROJECT_DASHBOARD.md
 
 # debug
 npm-debug.log*
