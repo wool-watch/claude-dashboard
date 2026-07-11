@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { parseJsonlLines } from "@/lib/parser/jsonl";
 import {
   extractAssistantText,
+  extractToolResults,
+  extractToolUseDetails,
   extractToolUses,
   extractUserText,
   isAiTitleRecord,
@@ -234,5 +236,47 @@ describe("content ユーティリティ", () => {
     ).toBe(false);
     expect(isToolResultOnly("文字列")).toBe(false);
     expect(isToolResultOnly([])).toBe(true); // 防御的に非ターン扱い
+  });
+});
+
+describe("tool_use / tool_result 詳細ユーティリティ", () => {
+  it("extractToolUseDetails: tool_use の id / name / input を抽出する", () => {
+    const blocks: RawContentBlock[] = [
+      { type: "text", text: "編集します" },
+      {
+        type: "tool_use",
+        id: "toolu_1",
+        name: "Edit",
+        input: { file_path: "src/a.ts", old_string: "a", new_string: "a\nb" },
+      },
+      { type: "tool_use", id: "toolu_2", name: "Bash" }, // input 欠損も許容
+      { type: "tool_use", name: "Broken" }, // id 欠損は除外
+    ];
+    expect(extractToolUseDetails(blocks)).toEqual([
+      {
+        id: "toolu_1",
+        name: "Edit",
+        input: { file_path: "src/a.ts", old_string: "a", new_string: "a\nb" },
+      },
+      { id: "toolu_2", name: "Bash", input: undefined },
+    ]);
+    expect(extractToolUseDetails(undefined)).toEqual([]);
+  });
+
+  it("extractToolResults: tool_use_id と is_error を抽出する（省略/false は成功）", () => {
+    expect(
+      extractToolResults([
+        { type: "tool_result", tool_use_id: "toolu_1", content: "ok" },
+        { type: "tool_result", tool_use_id: "toolu_2", is_error: false },
+        { type: "tool_result", tool_use_id: "toolu_3", is_error: true },
+        { type: "tool_result" }, // tool_use_id 欠損は除外
+        { type: "text", text: "無視" },
+      ]),
+    ).toEqual([
+      { toolUseId: "toolu_1", isError: false },
+      { toolUseId: "toolu_2", isError: false },
+      { toolUseId: "toolu_3", isError: true },
+    ]);
+    expect(extractToolResults("文字列コンテンツ")).toEqual([]);
   });
 });
