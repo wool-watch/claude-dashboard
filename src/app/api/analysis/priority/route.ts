@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
 import {
-  getPriorityAnalysis,
+  getPriorityAnalysisState,
   isPriorityAnalysisInflight,
   runPriorityAnalysis,
 } from "@/lib/analysis/priority-service";
@@ -81,9 +81,11 @@ export async function GET(req?: NextRequest) {
       );
     }
     const projectId = project ?? undefined;
+    const { priority, isLegacy } = await getPriorityAnalysisState(projectId);
     return NextResponse.json({
-      priority: await getPriorityAnalysis(projectId),
+      priority,
       isAnalyzing: isPriorityAnalysisInflight(projectId),
+      isLegacy,
     });
   } catch (e) {
     return errorResponse(e);
