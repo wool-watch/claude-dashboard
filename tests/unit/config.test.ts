@@ -1,10 +1,14 @@
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getConfig } from "@/lib/config";
 
-afterEach(() => {
+// 既定値の検証はグローバル環境ガード（tests/setup-env-guard.ts）が入れる値も
+// 邪魔になるため、各テストの前後で env を空にする。
+// getConfig は env を読むだけで FS に触れないため、実データに影響しない
+const clearEnv = () => {
   delete process.env.MAX_FILE_SIZE_MB;
+  delete process.env.CLAUDE_DATA_DIR;
   delete process.env.CLAUDE_ARCHIVE_DIR;
   delete process.env.CLAUDE_SETTINGS_PATH;
   delete process.env.ARCHIVE_SYNC_INTERVAL_MS;
@@ -12,7 +16,10 @@ afterEach(() => {
   delete process.env.CLAUDE_CLI_PATH;
   delete process.env.ANALYSIS_TIMEOUT_MS;
   delete process.env.ANALYSIS_MAX_BUDGET_USD;
-});
+};
+
+beforeEach(clearEnv);
+afterEach(clearEnv);
 
 describe("getConfig: maxFileSizeBytes", () => {
   it("既定値は 100MB", () => {

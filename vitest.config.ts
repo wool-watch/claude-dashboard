@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    // 全テストで CLAUDE_* パスを一時ディレクトリへ強制隔離（実データ保護）
+    setupFiles: ["tests/setup-env-guard.ts"],
   },
   resolve: {
     alias: {
