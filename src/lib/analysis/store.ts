@@ -6,7 +6,7 @@ import { isStoredPriorityAnalysis } from "@/lib/analysis/priority-types";
 import type { StoredQueue } from "@/lib/analysis/queue-types";
 import { isStoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
-import { isStoredAnalysis } from "@/lib/analysis/types";
+import { isLegacyStoredAnalysis, isStoredAnalysis } from "@/lib/analysis/types";
 
 export const UUID_RE = /^[0-9a-f-]{36}$/i;
 const ANALYSIS_FILE_RE = /^[0-9a-f-]{36}\.json$/i;
@@ -117,6 +117,58 @@ export async function readAllAnalyses(
     if (analysis !== null) out.push(analysis);
   }
   return out;
+}
+
+export interface LegacyAnalysisRef {
+  sessionId: string;
+  projectId: string;
+}
+
+/**
+ * 旧 v1 形式の保存ファイルを列挙する。
+ * v1 は isStoredAnalysis 不合格（= 集計から除外）だが、セッション一覧では
+ * 「stale（要再分析）」として見せて一括再分析導線に乗せるために参照だけ返す。
+ */
+export async function readLegacyAnalysisRefs(
+  analysisDir: string,
+): Promise<LegacyAnalysisRef[]> {
+  let files: string[];
+  try {
+    files = await fs.readdir(analysisDir);
+  } catch {
+    return []; // 未作成
+  }
+  const out: LegacyAnalysisRef[] = [];
+  for (const file of files) {
+    if (!ANALYSIS_FILE_RE.test(file)) continue;
+    try {
+      const text = await fs.readFile(path.join(analysisDir, file), "utf8");
+      const parsed: unknown = JSON.parse(text);
+      if (isLegacyStoredAnalysis(parsed)) {
+        out.push({ sessionId: parsed.sessionId, projectId: parsed.projectId });
+      }
+    } catch {
+      // 破損・読取不可はスキップ
+    }
+  }
+  return out;
+}
+
+/** 指定セッションの保存ファイルが旧 v1 形式かどうか */
+export async function isLegacyAnalysisFile(
+  analysisDir: string,
+  sessionId: string,
+): Promise<boolean> {
+  if (!UUID_RE.test(sessionId)) return false;
+  try {
+    const text = await fs.readFile(
+      path.join(analysisDir, `${sessionId}.json`),
+      "utf8",
+    );
+    return isLegacyStoredAnalysis(JSON.parse(text));
+  } catch {
+    return false;
+  }
 }
 
 export async function writeQueue(

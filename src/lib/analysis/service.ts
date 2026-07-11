@@ -8,8 +8,15 @@ import {
   SESSION_ANALYSIS_SYSTEM_PROMPT,
 } from "@/lib/analysis/runner";
 import {
+  computeSessionMetrics,
+  formatMetricsForPrompt,
+  type SessionMetrics,
+} from "@/lib/analysis/metrics";
+import {
+  isLegacyAnalysisFile,
   readAllAnalyses,
   readAnalysis,
+  readLegacyAnalysisRefs,
   readQueue,
   writeAnalysis,
 } from "@/lib/analysis/store";
@@ -49,19 +56,28 @@ function getInflightMap(): Map<string, Promise<unknown>> {
   return globalThis.__claudeDashboardAnalysisInflight;
 }
 
-function buildPrompt(transcript: string): string {
-  return `以下は Claude Code のセッション（ユーザーとアシスタントのやり取り）の記録です。
+function buildPrompt(transcript: string, metrics: SessionMetrics): string {
+  return `以下は Claude Code のセッション（ユーザーとアシスタントのやり取り）の記録と、記録から機械的に算出した定量メトリクスです。
 [USER] がユーザーの指示、[ASSISTANT] がアシスタントの応答（使用ツール付き）です。
 
 この記録を分析し、次の観点で振り返りを出力してください:
-- summary: セッション全体で何をしようとし、どう進んだかの要約（2〜3文）
-- goodPoints: ユーザーの指示・進め方で効果的だった点（具体的な発言を根拠に）
-- improvements: 次回のセッションをより良くするための改善点。各項目に最も当てはまるカテゴリを付けること
-- scores: 指示の明確さ(instructionClarity)・進行の効率(efficiency)・目的の達成度(goalAchievement)を1〜5の整数で
+- summary: セッション全体で何をしようとし、どう進んだか、品質・工数・コストの面でどうだったかの要約（2〜3文）
+- goodPoints: ユーザーの指示・進め方で効果的だった点（具体的な発言・数値を根拠に）
+- improvements: 品質・作業時間・コストを改善するための具体アクション。action は次のセッション冒頭でそのまま実行できる一文で書くこと（例: 「着手前に対象ファイル一覧と完了条件を提示させる」）。category は手戻り・非効率の主因を選ぶこと
+- scores: ハーネス実践の5軸を1〜5の整数で
+  - planning: 着手前に計画・完了条件・タスク分解があったか
+  - contextProvision: 背景・制約・成功基準を事前に共有したか
+  - verification: 実装をテスト・動作確認で裏付けたか（完了宣言だけで終わっていないか）。テスト実行${metrics.testRunCount}回・失敗${metrics.testFailCount}回を必ず考慮すること
+  - trajectoryStability: 手戻り・軌道修正の少なさ。ユーザー割り込み${metrics.interruptionCount}回・再編集${metrics.reEditedFileCount}ファイルを必ず考慮すること
+  - scopeDiscipline: 対象範囲が明確で、途中で膨張しなかったか
 
 注意:
-- 改善点は「〜すると良い」の形で、次のセッションでそのまま実行できる具体性で書くこと
+- 評価は必ず記録中の発言と定量メトリクスの数値を根拠にし、一般論を避けること
+- 推定変更行数はヒューリスティックであり、Write（新規作成）はファイル全量を計上するため大きめに出る
 - 記録が途中で省略されている場合（「（中略）」「（省略）」マーカー）は、見えている範囲で判断すること
+
+=== 定量メトリクス（ログから機械的に算出。評価の根拠に使うこと） ===
+${formatMetricsForPrompt(metrics)}
 
 === セッション記録 ===
 ${transcript}`;
@@ -92,10 +108,8 @@ export async function analyzeSession(
     const ref = await getSessionFileRef(sessionId);
     if (ref === null) return null;
 
-    const transcript = buildTranscript(
-      readFileSync(ref.filePath, "utf8"),
-      config,
-    );
+    const rawJsonl = readFileSync(ref.filePath, "utf8");
+    const transcript = buildTranscript(rawJsonl, config);
     if (transcript.userTurnCount === 0) {
       throw new AnalysisError(
         "分析対象の会話がありません（本線のユーザー発話が0件）",
@@ -103,11 +117,12 @@ export async function analyzeSession(
       );
     }
 
+    const metrics = computeSessionMetrics(rawJsonl, session);
     const settings = await readSettings(config.settingsPath);
     const provider = settings.analysisProvider;
     const model = settings.providers[provider].model;
     const outcome = await deps.run(
-      buildPrompt(transcript.text),
+      buildPrompt(transcript.text, metrics),
       {
         model,
         jsonSchema: ANALYSIS_JSON_SCHEMA,
@@ -125,7 +140,7 @@ export async function analyzeSession(
     }
 
     const stored: StoredAnalysis = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       sessionId,
       projectId: ref.projectId,
       analyzedAt: new Date().toISOString(),
@@ -135,6 +150,7 @@ export async function analyzeSession(
       sourceSize: ref.size,
       sessionLastAt: session.lastAt,
       costUSD: outcome.costUSD,
+      metrics,
       result: outcome.result,
     };
     await writeAnalysis(config.analysisDir, stored);
@@ -158,6 +174,10 @@ export async function getAnalysisWithStaleness(
   const analysis = await readAnalysis(config.analysisDir, sessionId);
   const ref = await getSessionFileRef(sessionId);
   if (analysis === null) {
+    // 旧 v1 形式は「要再分析」として stale 扱いで返す
+    if (await isLegacyAnalysisFile(config.analysisDir, sessionId)) {
+      return { analysis: null, isStale: true };
+    }
     return ref === null ? null : { analysis: null, isStale: false };
   }
   const isStale =
@@ -219,8 +239,9 @@ export async function getAnalysisStatusMap(): Promise<
   Map<string, SessionAnalysisStatus>
 > {
   const config = getConfig();
-  const [analyses, queue] = await Promise.all([
+  const [analyses, legacyRefs, queue] = await Promise.all([
     readAllAnalyses(config.analysisDir),
+    readLegacyAnalysisRefs(config.analysisDir),
     readQueue(config.analysisDir),
   ]);
   const entries = await Promise.all(
@@ -229,6 +250,10 @@ export async function getAnalysisStatusMap(): Promise<
     ),
   );
   const map = new Map<string, SessionAnalysisStatus>(entries);
+  // 旧 v1 形式は無条件で「要再分析」（一括再分析導線に乗せる）
+  for (const legacy of legacyRefs) {
+    if (!map.has(legacy.sessionId)) map.set(legacy.sessionId, "stale");
+  }
   // 待機中は分析済み・stale より優先（一覧の関心事は「これから何が起きるか」）
   for (const item of queue.items) {
     if (item.state === "pending") map.set(item.sessionId, "queued");

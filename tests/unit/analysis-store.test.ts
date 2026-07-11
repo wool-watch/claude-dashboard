@@ -142,7 +142,7 @@ const storedPriority = (): StoredPriorityAnalysis => ({
     pickedIssues: [
       {
         point: "タスクを小さく分割すると良い",
-        category: "タスク分割",
+        category: "計画不足",
         reason: "頻出のため",
         actions: ["依頼を3ステップに分ける"],
       },
