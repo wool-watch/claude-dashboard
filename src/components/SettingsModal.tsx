@@ -19,6 +19,8 @@ interface PublicSettings {
   };
 }
 
+type PutFn = (patch: Record<string, unknown>) => Promise<boolean>;
+
 const RETENTION_OPTIONS: readonly RetentionDays[] = [30, 90, 120, 150, 180, null];
 
 const retentionLabel = (v: RetentionDays) => (v === null ? "無制限" : `${v}日`);
@@ -63,6 +65,9 @@ const PROVIDER_FIELDS: Record<
   ],
 };
 
+const helpClass = "mt-1 text-[10px] text-black/50 dark:text-white/50";
+const sectionTitleClass = "mb-2 text-xs font-semibold";
+
 export function SettingsModal({
   open,
   onClose,
@@ -78,9 +83,6 @@ export function SettingsModal({
 function ModalBody({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   // オープン時に現在値を取得
   useEffect(() => {
@@ -107,25 +109,8 @@ function ModalBody({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const provider = settings?.analysisProvider ?? "claude";
-
-  // プロバイダ切替・取得時にフォームの下書きを現在値から初期化（apiKey は常に空欄）
-  useEffect(() => {
-    if (settings === null) return;
-    const current = settings.providers[settings.analysisProvider] as unknown as Record<
-      string,
-      unknown
-    >;
-    const next: Record<string, string> = {};
-    for (const field of PROVIDER_FIELDS[settings.analysisProvider]) {
-      const value = current[field.key];
-      next[field.key] = typeof value === "string" ? value : "";
-    }
-    setDraft(next);
-  }, [settings]);
-
   /** 部分更新 PUT。成功時はサーバーが返す公開設定で state を同期する */
-  const put = useCallback(async (patch: Record<string, unknown>): Promise<boolean> => {
+  const put = useCallback<PutFn>(async (patch) => {
     setError(null);
     try {
       const res = await fetch("/api/settings", {
@@ -145,26 +130,7 @@ function ModalBody({ onClose }: { onClose: () => void }) {
     }
   }, []);
 
-  const saveProviderForm = useCallback(async () => {
-    if (settings === null) return;
-    setSaving(true);
-    const patch: Record<string, string> = {};
-    for (const field of PROVIDER_FIELDS[provider]) {
-      // apiKey は空欄 = 変更なし（サーバー側仕様）なのでそのまま送ってよい
-      patch[field.key] = draft[field.key] ?? "";
-    }
-    const ok = await put({ providers: { [provider]: patch } });
-    setSaving(false);
-    if (ok) {
-      setSavedAt(Date.now());
-      setTimeout(() => setSavedAt(null), 2000);
-    }
-  }, [settings, provider, draft, put]);
-
-  const inputClass =
-    "w-full rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs dark:border-white/15";
-  const sectionTitleClass = "mb-2 text-xs font-semibold";
-  const helpClass = "mt-1 text-[10px] text-black/50 dark:text-white/50";
+  const provider = settings?.analysisProvider ?? "claude";
 
   return (
     <div
@@ -249,102 +215,13 @@ function ModalBody({ onClose }: { onClose: () => void }) {
               </p>
             </section>
 
-            <section className="rounded-md border border-black/10 p-3 dark:border-white/15">
-              <p className={sectionTitleClass}>
-                {PROVIDER_LABELS[provider]} の設定
-              </p>
-
-              {provider === "claude" && (
-                <div className="mb-2">
-                  <p className="mb-1 text-[10px] text-black/50 dark:text-white/50">
-                    モデル
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {CLAUDE_MODEL_OPTIONS.map((option) => (
-                      <label
-                        key={option.value}
-                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
-                      >
-                        <input
-                          type="radio"
-                          name="claudeModel"
-                          checked={settings.providers.claude.model === option.value}
-                          onChange={() =>
-                            void put({
-                              providers: { claude: { model: option.value } },
-                            })
-                          }
-                        />
-                        {option.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {PROVIDER_FIELDS[provider].map((field) => (
-                  <div key={field.key}>
-                    <label className="mb-0.5 block text-[10px] text-black/50 dark:text-white/50">
-                      {field.label}
-                      {field.key === "apiKey" &&
-                        settings.providers.openaiCompatible.hasApiKey && (
-                          <span className="ml-1 text-emerald-700 dark:text-emerald-300">
-                            設定済み（変更する場合のみ入力）
-                          </span>
-                        )}
-                    </label>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type={field.password === true ? "password" : "text"}
-                        value={draft[field.key] ?? ""}
-                        placeholder={field.placeholder}
-                        onChange={(e) =>
-                          setDraft((d) => ({ ...d, [field.key]: e.target.value }))
-                        }
-                        className={inputClass}
-                      />
-                      {field.key === "apiKey" &&
-                        settings.providers.openaiCompatible.hasApiKey && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void put({
-                                providers: { openaiCompatible: { apiKey: null } },
-                              })
-                            }
-                            className="shrink-0 rounded-md border border-black/10 px-2 py-1 text-[10px] text-black/60 hover:bg-black/5 dark:border-white/15 dark:text-white/60 dark:hover:bg-white/10"
-                          >
-                            クリア
-                          </button>
-                        )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void saveProviderForm()}
-                  disabled={saving}
-                  className="rounded-md border border-black/10 px-3 py-1 text-xs text-black/70 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
-                >
-                  {saving ? "保存中…" : "保存"}
-                </button>
-                {savedAt !== null && (
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300">
-                    保存しました
-                  </span>
-                )}
-              </div>
-              {provider === "openaiCompatible" && (
-                <p className={helpClass}>
-                  APIキーは設定ファイル（settings.json、パーミッション600）に保存されます。環境変数
-                  OPENAI_COMPAT_API_KEY があればそちらが優先されます
-                </p>
-              )}
-            </section>
+            {/* key でプロバイダ切替時に下書きを初期化する */}
+            <ProviderSettingsForm
+              key={provider}
+              provider={provider}
+              settings={settings}
+              put={put}
+            />
 
             {error !== null && (
               <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -355,5 +232,136 @@ function ModalBody({ onClose }: { onClose: () => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+function ProviderSettingsForm({
+  provider,
+  settings,
+  put,
+}: {
+  provider: ProviderId;
+  settings: PublicSettings;
+  put: PutFn;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const current = settings.providers[provider] as unknown as Record<string, unknown>;
+    const initial: Record<string, string> = {};
+    for (const field of PROVIDER_FIELDS[provider]) {
+      const value = current[field.key];
+      initial[field.key] = typeof value === "string" ? value : "";
+    }
+    return initial;
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    const patch: Record<string, string> = {};
+    for (const field of PROVIDER_FIELDS[provider]) {
+      // apiKey は空欄 = 変更なし（サーバー側仕様）なのでそのまま送ってよい
+      patch[field.key] = draft[field.key] ?? "";
+    }
+    const ok = await put({ providers: { [provider]: patch } });
+    setSaving(false);
+    if (ok) {
+      setSaved(true);
+      // 保存済みキーを上書き入力した場合も入力欄には残さない
+      setDraft((d) => ("apiKey" in d ? { ...d, apiKey: "" } : d));
+      setTimeout(() => setSaved(false), 2000);
+    }
+  }, [provider, draft, put]);
+
+  const hasApiKey =
+    provider === "openaiCompatible" && settings.providers.openaiCompatible.hasApiKey;
+
+  return (
+    <section className="rounded-md border border-black/10 p-3 dark:border-white/15">
+      <p className={sectionTitleClass}>{PROVIDER_LABELS[provider]} の設定</p>
+
+      {provider === "claude" && (
+        <div className="mb-2">
+          <p className="mb-1 text-[10px] text-black/50 dark:text-white/50">モデル</p>
+          <div className="flex flex-col gap-1">
+            {CLAUDE_MODEL_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+              >
+                <input
+                  type="radio"
+                  name="claudeModel"
+                  checked={settings.providers.claude.model === option.value}
+                  onChange={() =>
+                    void put({ providers: { claude: { model: option.value } } })
+                  }
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {PROVIDER_FIELDS[provider].map((field) => (
+          <div key={field.key}>
+            <label className="mb-0.5 block text-[10px] text-black/50 dark:text-white/50">
+              {field.label}
+              {field.key === "apiKey" && hasApiKey && (
+                <span className="ml-1 text-emerald-700 dark:text-emerald-300">
+                  設定済み（変更する場合のみ入力）
+                </span>
+              )}
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type={field.password === true ? "password" : "text"}
+                value={draft[field.key] ?? ""}
+                placeholder={field.placeholder}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, [field.key]: e.target.value }))
+                }
+                className="w-full rounded-md border border-black/10 bg-transparent px-2 py-1 text-xs dark:border-white/15"
+              />
+              {field.key === "apiKey" && hasApiKey && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void put({ providers: { openaiCompatible: { apiKey: null } } })
+                  }
+                  className="shrink-0 rounded-md border border-black/10 px-2 py-1 text-[10px] text-black/60 hover:bg-black/5 dark:border-white/15 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  クリア
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={saving}
+          className="rounded-md border border-black/10 px-3 py-1 text-xs text-black/70 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
+        >
+          {saving ? "保存中…" : "保存"}
+        </button>
+        {saved && (
+          <span className="text-[10px] text-emerald-700 dark:text-emerald-300">
+            保存しました
+          </span>
+        )}
+      </div>
+      {provider === "openaiCompatible" && (
+        <p className={helpClass}>
+          APIキーは設定ファイル（settings.json、パーミッション600）に保存されます。環境変数
+          OPENAI_COMPAT_API_KEY があればそちらが優先されます
+        </p>
+      )}
+    </section>
   );
 }
