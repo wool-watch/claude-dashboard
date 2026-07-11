@@ -6,7 +6,8 @@ export type AnalysisErrorKind =
   | "in-flight"
   | "no-conversation"
   | "no-analyses"
-  | "aborted";
+  | "aborted"
+  | "connection-failed";
 
 export class AnalysisError extends Error {
   constructor(

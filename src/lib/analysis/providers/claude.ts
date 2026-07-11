@@ -1,5 +1,6 @@
 import { AnalysisError } from "@/lib/analysis/errors";
 import { ensureCliSuccess, execCli } from "@/lib/analysis/providers/cli-exec";
+import { stripCodeFence } from "@/lib/analysis/providers/json-extract";
 import type {
   ProviderRunOptions,
   ProviderRunOutcome,
@@ -10,12 +11,6 @@ export interface CliEnvelope {
   result: unknown;
   isError: boolean;
   totalCostUsd: number | null;
-}
-
-/** 「```json ... ```」等のコードフェンスを剥がす */
-function stripCodeFence(s: string): string {
-  const m = /^\s*```[a-z]*\s*\n?([\s\S]*?)\n?\s*```\s*$/.exec(s);
-  return m !== null ? m[1] : s;
 }
 
 /** claude -p --output-format json の stdout を防御的に解析する */
