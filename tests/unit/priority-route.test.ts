@@ -1,4 +1,11 @@
-import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
@@ -6,21 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getPriority, POST as postPriority } from "@/app/api/analysis/priority/route";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { StoredAnalysis } from "@/lib/analysis/types";
-import { mkStoredAnalysis } from "./helpers";
+import { mkPriorityResult, mkStoredAnalysis } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 
-const priorityResult = {
-  pickedIssues: [
-    {
-      point: "着手前の計画・タスク分解が不足している",
-      category: "計画不足",
-      reason: "頻出のため",
-      actions: ["依頼を3ステップに分ける"],
-    },
-  ],
-  summary: "全体講評。",
-};
+const priorityResult = mkPriorityResult();
 
 let baseDir: string;
 let analysisDir: string;
@@ -180,7 +177,11 @@ describe("GET /api/analysis/priority", () => {
   it("未保存は priority null / isAnalyzing false", async () => {
     const res = await getPriority();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ priority: null, isAnalyzing: false });
+    expect(await res.json()).toEqual({
+      priority: null,
+      isAnalyzing: false,
+      isLegacy: false,
+    });
   });
 
   it("実行後は保存済みの結果を返す", async () => {
@@ -245,5 +246,73 @@ describe("プロジェクト別の優先課題分析", () => {
   it("GET の不正な project は 400", async () => {
     const res = await getPriority(getReq("/api/analysis/priority?project=a/b"));
     expect(res.status).toBe(400);
+  });
+});
+
+/** 移行前に保存されていた v2 形式（生 JSON） */
+const legacyPriorityJson = {
+  schemaVersion: 2,
+  analyzedAt: "2026-07-01T00:00:00.000Z",
+  model: "sonnet",
+  analyzedSessionCount: 3,
+  costUSD: null,
+  result: {
+    pickedIssues: [
+      {
+        point: "課題",
+        category: "計画不足",
+        reason: "理由",
+        actions: ["旧形式のアクション"],
+      },
+    ],
+    summary: "講評。",
+  },
+};
+
+describe("GET /api/analysis/priority: 旧形式（v2）の扱い", () => {
+  it("旧 v2 保存ファイルは priority null / isLegacy true を返す", async () => {
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.json"),
+      JSON.stringify(legacyPriorityJson),
+    );
+
+    const res = await getPriority();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      priority: null,
+      isAnalyzing: false,
+      isLegacy: true,
+    });
+  });
+
+  it("?project= も旧形式を判定できる", async () => {
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.-proj-a.json"),
+      JSON.stringify(legacyPriorityJson),
+    );
+
+    const res = await getPriority(getReq("/api/analysis/priority?project=-proj-a"));
+    const body = await res.json();
+    expect(body.priority).toBeNull();
+    expect(body.isLegacy).toBe(true);
+  });
+
+  it("POST で再分析すると isLegacy が解消し v3 の構造化アクションを返す", async () => {
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.json"),
+      JSON.stringify(legacyPriorityJson),
+    );
+    await writeAnalysis(analysisDir, storedAnalysis());
+    okCli();
+    await postPriority(postReq({ model: "sonnet" }));
+
+    const body = await (await getPriority()).json();
+    expect(body.isLegacy).toBe(false);
+    expect(body.priority.result.pickedIssues[0].actions[0].practice).toBe(
+      "plan-first",
+    );
   });
 });
