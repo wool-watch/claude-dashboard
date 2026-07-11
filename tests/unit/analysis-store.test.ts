@@ -133,7 +133,7 @@ describe("readLegacyAnalysisRefs", () => {
 });
 
 const storedPriority = (): StoredPriorityAnalysis => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   analyzedAt: "2026-07-10T00:00:00.000Z",
   model: "opus",
   analyzedSessionCount: 3,

@@ -42,7 +42,7 @@ export interface PriorityAnalysisResult {
  * プロジェクト別は analysisDir/priority-analysis.<projectId>.json に各1件。
  */
 export interface StoredPriorityAnalysis {
-  schemaVersion: 1;
+  schemaVersion: 2;
   analyzedAt: string;
   /** 分析に使ったモデル名（プロバイダごとに自由形式） */
   model: string;
@@ -96,7 +96,7 @@ export function isStoredPriorityAnalysis(
   v: unknown,
 ): v is StoredPriorityAnalysis {
   if (!isObject(v)) return false;
-  if (v.schemaVersion !== 1) return false;
+  if (v.schemaVersion !== 2) return false;
   if (typeof v.analyzedAt !== "string") return false;
   if (typeof v.model !== "string" || v.model === "") return false;
   if (v.provider !== undefined && !PROVIDER_IDS.includes(v.provider as ProviderId)) {
