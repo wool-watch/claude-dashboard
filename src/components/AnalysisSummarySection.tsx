@@ -182,16 +182,13 @@ export function AnalysisSummarySection({ projectId }: { projectId?: string }) {
     <Section
       title="振り返りサマリー（AI分析の傾向）"
       action={
-        // 優先課題分析の保存先はグローバル1件のためプロジェクト指定時は非表示
-        projectId === undefined ? (
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
-          >
-            優先課題を分析
-          </button>
-        ) : undefined
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="rounded-md border border-black/10 px-3 py-1.5 text-xs text-black/70 hover:bg-black/5 dark:border-white/15 dark:text-white/70 dark:hover:bg-white/10"
+        >
+          優先課題を分析
+        </button>
       }
     >
       {summary.error !== null && <ErrorNote message={summary.error} />}
@@ -200,12 +197,11 @@ export function AnalysisSummarySection({ projectId }: { projectId?: string }) {
       ) : (
         summary.data !== null && <SummaryBody dto={summary.data} />
       )}
-      {projectId === undefined && (
-        <PriorityAnalysisModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
+      <PriorityAnalysisModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        projectId={projectId}
+      />
     </Section>
   );
 }

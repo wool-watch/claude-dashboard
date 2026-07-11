@@ -29,31 +29,45 @@ const MODEL_OPTIONS: ReadonlyArray<{
 export function PriorityAnalysisModal({
   open,
   onClose,
+  projectId,
 }: {
   open: boolean;
   onClose: () => void;
+  /** 指定するとプロジェクト単位の優先課題分析になる（保存もプロジェクト別） */
+  projectId?: string;
 }) {
   // 閉じている間はアンマウントし、再オープン時に状態を初期化して再取得する
   if (!open) return null;
-  return <ModalBody onClose={onClose} />;
+  return <ModalBody onClose={onClose} projectId={projectId} />;
 }
 
-function ModalBody({ onClose }: { onClose: () => void }) {
+function ModalBody({
+  onClose,
+  projectId,
+}: {
+  onClose: () => void;
+  projectId?: string;
+}) {
   const [priority, setPriority] = useState<StoredPriorityAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState<PriorityAnalysisModel>("sonnet");
 
+  const apiUrl =
+    projectId === undefined
+      ? "/api/analysis/priority"
+      : `/api/analysis/priority?project=${encodeURIComponent(projectId)}`;
+
   const fetchState = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
-      const res = await fetch("/api/analysis/priority", { signal });
+      const res = await fetch(apiUrl, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as PriorityState;
       setPriority(body.priority);
       setAnalyzing(body.isAnalyzing);
     },
-    [],
+    [apiUrl],
   );
 
   // オープン時に前回結果と実行中状態を取得
@@ -104,7 +118,9 @@ function ModalBody({ onClose }: { onClose: () => void }) {
       const res = await fetch("/api/analysis/priority", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model }),
+        body: JSON.stringify(
+          projectId === undefined ? { model } : { model, project: projectId },
+        ),
       });
       const body = (await res.json()) as {
         priority?: StoredPriorityAnalysis;
@@ -123,7 +139,7 @@ function ModalBody({ onClose }: { onClose: () => void }) {
       setError(e instanceof Error ? e.message : "分析に失敗しました");
       setAnalyzing(false);
     }
-  }, [model]);
+  }, [model, projectId]);
 
   return (
     <div
@@ -152,7 +168,9 @@ function ModalBody({ onClose }: { onClose: () => void }) {
         </div>
 
         <p className="mb-3 text-xs text-black/50 dark:text-white/50">
-          保存済みのAI振り返り（直近最大20セッション分の改善点）から、優先度の高い課題をAIがピックアップし、具体的な改善アクションを提案します
+          {projectId === undefined
+            ? "保存済みのAI振り返り（直近最大20セッション分の改善点）から、優先度の高い課題をAIがピックアップし、具体的な改善アクションを提案します"
+            : "このプロジェクトの保存済みAI振り返り（直近最大20セッション分の改善点）から、優先度の高い課題をAIがピックアップし、具体的な改善アクションを提案します"}
         </p>
 
         <div className="mb-4 flex items-center gap-2">
