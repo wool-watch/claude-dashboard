@@ -6,14 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getPriority, POST as postPriority } from "@/app/api/analysis/priority/route";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { StoredAnalysis } from "@/lib/analysis/types";
+import { mkStoredAnalysis } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 
 const priorityResult = {
   pickedIssues: [
     {
-      point: "タスクを小さく分割すると良い",
-      category: "タスク分割",
+      point: "着手前の計画・タスク分解が不足している",
+      category: "計画不足",
       reason: "頻出のため",
       actions: ["依頼を3ステップに分ける"],
     },
@@ -39,23 +40,7 @@ afterEach(() => {
   rmSync(baseDir, { recursive: true, force: true });
 });
 
-const storedAnalysis = (): StoredAnalysis => ({
-  schemaVersion: 1,
-  sessionId: UUID_A,
-  projectId: "-proj-a",
-  analyzedAt: "2026-07-10T00:00:00.000Z",
-  model: "haiku",
-  sourceMtimeMs: 1000,
-  sourceSize: 500,
-  sessionLastAt: "2026-07-01T00:01:10.000Z",
-  costUSD: 0.01,
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: "改善点", category: "タスク分割" }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
-});
+const storedAnalysis = (): StoredAnalysis => mkStoredAnalysis(UUID_A);
 
 const setFakeCli = (body: string) => {
   const cliPath = path.join(baseDir, "fake-claude.sh");

@@ -15,6 +15,7 @@ import { GET as getSessions } from "@/app/api/sessions/route";
 import type { RunOutcome } from "@/lib/analysis/runner";
 import { analyzeSession } from "@/lib/analysis/service";
 import { getGlobalCache } from "@/lib/store/cache";
+import { mkAnalysisResult } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -25,12 +26,7 @@ const basicJsonl = readFileSync(
 );
 
 const outcome: RunOutcome = {
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: "改善点", category: "その他" }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
+  result: mkAnalysisResult(),
   costUSD: 0.02,
 };
 

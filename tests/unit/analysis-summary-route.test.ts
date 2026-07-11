@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as getAnalysisSummary } from "@/app/api/analysis/summary/route";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { ImprovementCategory, StoredAnalysis } from "@/lib/analysis/types";
+import { mkAnalysisResult, mkStoredAnalysis } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -28,23 +29,13 @@ const stored = (
   sessionId: string,
   projectId: string,
   category: ImprovementCategory,
-): StoredAnalysis => ({
-  schemaVersion: 1,
-  sessionId,
-  projectId,
-  analyzedAt: "2026-07-10T00:00:00.000Z",
-  model: "haiku",
-  sourceMtimeMs: 1000,
-  sourceSize: 500,
-  sessionLastAt: "2026-07-01T00:01:10.000Z",
-  costUSD: 0.01,
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: `改善点(${projectId})`, category }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
-});
+): StoredAnalysis =>
+  mkStoredAnalysis(sessionId, {
+    projectId,
+    result: mkAnalysisResult({
+      improvements: [{ action: `改善アクション(${projectId})`, category }],
+    }),
+  });
 
 const req = (url: string) => new NextRequest(`http://127.0.0.1:3947${url}`);
 
@@ -61,7 +52,7 @@ const fetchSummary = async (url: string): Promise<SummaryBody> => {
 
 describe("GET /api/analysis/summary の project フィルタ", () => {
   beforeEach(async () => {
-    await writeAnalysis(analysisDir, stored(UUID_A, "-proj-a", "タスク分割"));
+    await writeAnalysis(analysisDir, stored(UUID_A, "-proj-a", "計画不足"));
     await writeAnalysis(analysisDir, stored(UUID_B, "-proj-b", "その他"));
   });
 
@@ -73,7 +64,7 @@ describe("GET /api/analysis/summary の project フィルタ", () => {
   it("?project= で StoredAnalysis.projectId により絞られる", async () => {
     const body = await fetchSummary("/api/analysis/summary?project=-proj-a");
     expect(body.analyzedCount).toBe(1);
-    expect(body.categoryRanking[0].category).toBe("タスク分割");
+    expect(body.categoryRanking[0].category).toBe("計画不足");
     expect(
       body.categoryRanking.some((c) => c.category === "その他" && c.count > 0),
     ).toBe(false);

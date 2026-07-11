@@ -20,6 +20,7 @@ import type { RunOutcome } from "@/lib/analysis/runner";
 import { analyzeSession } from "@/lib/analysis/service";
 import { writeQueue } from "@/lib/analysis/store";
 import { getGlobalCache } from "@/lib/store/cache";
+import { mkLegacyStoredJson } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -32,8 +33,14 @@ const basicJsonl = readFileSync(
 const validResult = {
   summary: "テストの要約。",
   goodPoints: ["良い点1"],
-  improvements: [{ point: "改善点1", category: "タスク分割" }],
-  scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
+  improvements: [{ action: "改善アクション1", category: "計画不足" }],
+  scores: {
+    planning: 4,
+    contextProvision: 3,
+    verification: 5,
+    trajectoryStability: 4,
+    scopeDiscipline: 3,
+  },
 };
 
 let baseDir: string;
@@ -204,6 +211,22 @@ describe("GET /api/sessions/[id]/analysis", () => {
     });
   });
 
+  it("旧 v1 形式の分析は analysis null / isStale true（要再分析）", async () => {
+    writeLive(UUID_A, basicJsonl);
+    const analysisDir = path.join(baseDir, "analysis");
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      path.join(analysisDir, `${UUID_A}.json`),
+      JSON.stringify(mkLegacyStoredJson(UUID_A)),
+    );
+
+    const res = await getAnalysis(req(`/api/sessions/${UUID_A}/analysis`), ctx(UUID_A));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.analysis).toBeNull();
+    expect(body.isStale).toBe(true);
+  });
+
   it("分析実行中は isAnalyzing true、完了後は false", async () => {
     writeLive(UUID_A, basicJsonl);
     let release: (v: RunOutcome) => void = () => {};
@@ -269,8 +292,8 @@ describe("GET /api/analysis/summary", () => {
     const res = await getSummary();
     const body = await res.json();
     expect(body.analyzedCount).toBe(2);
-    expect(body.categoryRanking[0].category).toBe("タスク分割");
-    expect(body.avgScores.goalAchievement).toBe(5);
+    expect(body.categoryRanking[0].category).toBe("計画不足");
+    expect(body.avgScores.verification).toBe(5);
   });
 });
 

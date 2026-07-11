@@ -25,8 +25,14 @@ afterEach(() => {
 const validResult = {
   summary: "テストセッションの要約。",
   goodPoints: ["良い点1"],
-  improvements: [{ point: "改善点1", category: "その他" }],
-  scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
+  improvements: [{ action: "改善アクション1", category: "その他" }],
+  scores: {
+    planning: 4,
+    contextProvision: 3,
+    verification: 5,
+    trajectoryStability: 4,
+    scopeDiscipline: 3,
+  },
 };
 
 /** argv と stdin をダンプしてから指定の stdout を返すフェイク claude CLI を作る */
@@ -120,7 +126,7 @@ describe("runClaudeAnalysis: 異常系", () => {
   it("スキーマ不適合の result は invalid-output", async () => {
     echoEnvelope({
       type: "result",
-      result: { ...validResult, scores: { ...validResult.scores, efficiency: 6 } },
+      result: { ...validResult, scores: { ...validResult.scores, verification: 6 } },
       is_error: false,
       total_cost_usd: 0,
     });

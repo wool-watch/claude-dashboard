@@ -17,6 +17,7 @@ import { analyzeSession } from "@/lib/analysis/service";
 import { writeQueue } from "@/lib/analysis/store";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 import { getGlobalCache } from "@/lib/store/cache";
+import { mkStoredAnalysis } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -71,23 +72,7 @@ const pendingItem = (sessionId: string, sec = 0): QueueItem => ({
   enqueuedAt: at(sec),
 });
 
-const mkStored = (sessionId: string): StoredAnalysis => ({
-  schemaVersion: 1,
-  sessionId,
-  projectId: "-proj-a",
-  analyzedAt: "2026-07-10T00:00:00.000Z",
-  model: "haiku",
-  sourceMtimeMs: 1000,
-  sourceSize: 500,
-  sessionLastAt: "2026-07-01T00:01:10.000Z",
-  costUSD: 0.01,
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: "改善点", category: "その他" }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
-});
+const mkStored = (sessionId: string): StoredAnalysis => mkStoredAnalysis(sessionId);
 
 const outcome: RunOutcome = {
   result: mkStored(UUID_A).result,
