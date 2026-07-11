@@ -73,6 +73,36 @@ export function extractToolUses(
     .map((b) => ({ id: b.id as string, name: b.name as string }));
 }
 
+/** tool_use ブロックから id / name / input を抽出する（メトリクス算出用） */
+export function extractToolUseDetails(
+  content: RawContentBlock[] | undefined,
+): Array<{ id: string; name: string; input: unknown }> {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(
+      (b) =>
+        b.type === "tool_use" &&
+        typeof b.id === "string" &&
+        typeof b.name === "string",
+    )
+    .map((b) => ({ id: b.id as string, name: b.name as string, input: b.input }));
+}
+
+/** tool_result ブロックから対応 tool_use id とエラーフラグを抽出する（is_error 省略/false は成功） */
+export function extractToolResults(
+  content: string | RawContentBlock[],
+): Array<{ toolUseId: string; isError: boolean }> {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter(
+      (b) => b.type === "tool_result" && typeof b.tool_use_id === "string",
+    )
+    .map((b) => ({
+      toolUseId: b.tool_use_id as string,
+      isError: b.is_error === true,
+    }));
+}
+
 /** user メッセージの表示用テキスト。配列のときは text ブロックを改行で連結 */
 export function extractUserText(
   content: string | RawContentBlock[],

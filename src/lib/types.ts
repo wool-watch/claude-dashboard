@@ -19,6 +19,14 @@ export interface RawContentBlock {
   text?: string;
   id?: string;
   name?: string;
+  /** tool_use ブロックのツール入力 */
+  input?: unknown;
+  /** tool_result ブロックの対応 tool_use id */
+  tool_use_id?: string;
+  /** tool_result ブロックのエラーフラグ（省略 = 成功） */
+  is_error?: boolean;
+  /** tool_result ブロックの結果本体（文字列またはブロック配列） */
+  content?: unknown;
 }
 
 /** user / assistant 共通のエンベロープ項目 */
