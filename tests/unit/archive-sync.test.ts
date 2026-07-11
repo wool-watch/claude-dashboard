@@ -24,6 +24,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 let liveDir: string;
 let archiveDir: string;
+let analysisDir: string;
 
 beforeEach(() => {
   liveDir = mkdtempSync(path.join(os.tmpdir(), "claude-dash-live-"));
@@ -31,13 +32,18 @@ beforeEach(() => {
     mkdtempSync(path.join(os.tmpdir(), "claude-dash-arch-")),
     "archive",
   );
+  // sync() は getConfig() 経由で analysisDir も参照するため、必ず一時側へ差し替える。
+  // 差し替えを忘れると孤児クリーンアップが実データの分析結果を削除してしまう
+  analysisDir = path.join(path.dirname(archiveDir), "analysis");
   process.env.CLAUDE_DATA_DIR = liveDir;
   process.env.CLAUDE_ARCHIVE_DIR = archiveDir;
+  process.env.CLAUDE_ANALYSIS_DIR = analysisDir;
 });
 
 afterEach(() => {
   delete process.env.CLAUDE_DATA_DIR;
   delete process.env.CLAUDE_ARCHIVE_DIR;
+  delete process.env.CLAUDE_ANALYSIS_DIR;
   rmSync(liveDir, { recursive: true, force: true });
   rmSync(path.dirname(archiveDir), { recursive: true, force: true });
   vi.restoreAllMocks();
@@ -216,17 +222,6 @@ describe("syncArchive: プルーニング", () => {
 });
 
 describe("syncArchive: 分析結果の孤児クリーンアップ", () => {
-  let analysisDir: string;
-
-  beforeEach(() => {
-    analysisDir = path.join(path.dirname(archiveDir), "analysis");
-    process.env.CLAUDE_ANALYSIS_DIR = analysisDir;
-  });
-
-  afterEach(() => {
-    delete process.env.CLAUDE_ANALYSIS_DIR;
-  });
-
   const writeAnalysisFile = (uuid: string) => {
     mkdirSync(analysisDir, { recursive: true });
     const p = path.join(analysisDir, `${uuid}.json`);
