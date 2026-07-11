@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDateTimeJa, formatUSD } from "@/components/format";
 import { Badge, EmptyState, Skeleton } from "@/components/ui";
+import type { PriorityActionKind } from "@/lib/analysis/practices";
+import { practiceNameOf } from "@/lib/analysis/practices";
 import type {
   PriorityAnalysisModel,
   StoredPriorityAnalysis,
@@ -14,6 +16,35 @@ interface PriorityState {
   priority: StoredPriorityAnalysis | null;
   /** サーバー側で分析実行中か（モーダルを閉じても実行は継続する） */
   isAnalyzing: boolean;
+  /** 旧形式（v1/v2）が保存されている = 再分析すると新形式になる */
+  isLegacy: boolean;
+}
+
+/** アクションの実施手段種別ごとのバッジ色（カテゴリの amber と区別する） */
+const KIND_TONES: Record<PriorityActionKind, "blue" | "purple" | "green" | "gray"> = {
+  依頼プロンプト: "blue",
+  "CLAUDE.md": "purple",
+  ワークフロー: "green",
+  "設定・ツール": "gray",
+};
+
+/** スニペットをクリップボードへコピーするボタン（2秒間だけ完了表示） */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        });
+      }}
+      className="rounded border border-black/10 bg-white/80 px-1.5 py-0.5 text-[11px] text-black/60 hover:bg-black/5 dark:border-white/15 dark:bg-neutral-800/80 dark:text-white/60 dark:hover:bg-white/10"
+    >
+      {copied ? "コピーしました" : "コピー"}
+    </button>
+  );
 }
 
 /** 分析中にサーバーへ完了を確認する間隔 */
@@ -51,6 +82,7 @@ function ModalBody({
   projectId?: string;
 }) {
   const [priority, setPriority] = useState<StoredPriorityAnalysis | null>(null);
+  const [legacy, setLegacy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +104,7 @@ function ModalBody({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as PriorityState;
       setPriority(body.priority);
+      setLegacy(body.isLegacy);
       setAnalyzing(body.isAnalyzing);
     },
     [apiUrl],
@@ -166,6 +199,7 @@ function ModalBody({
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
       setPriority(body.priority);
+      setLegacy(false);
       setAnalyzing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "分析に失敗しました");
@@ -248,7 +282,13 @@ function ModalBody({
           analyzing ? (
             <Skeleton className="h-24" />
           ) : (
-            <EmptyState message="まだ実行されていません。「分析開始」を押すと優先課題をピックアップします" />
+            <EmptyState
+              message={
+                legacy
+                  ? "旧形式の分析結果です。再分析すると新しい形式（実施手段・根拠プラクティス・期待効果・コピペ用スニペット付きアクション）で表示されます"
+                  : "まだ実行されていません。「分析開始」を押すと優先課題をピックアップします"
+              }
+            />
           )
         ) : (
           <div className="space-y-3">
@@ -266,14 +306,36 @@ function ModalBody({
                 <p className="mt-1 text-xs text-black/60 dark:text-white/60">
                   {issue.reason}
                 </p>
-                <ul className="mt-2 space-y-1 text-sm">
+                <div className="mt-2 space-y-2">
                   {issue.actions.map((action) => (
-                    <li key={action} className="flex gap-1.5">
-                      <span aria-hidden>→</span>
-                      <span>{action}</span>
-                    </li>
+                    <div
+                      key={action.title}
+                      className="rounded-md border border-black/10 bg-black/[0.02] p-2 dark:border-white/10 dark:bg-white/[0.03]"
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={KIND_TONES[action.kind]}>{action.kind}</Badge>
+                        <span className="text-sm font-medium">{action.title}</span>
+                        <span className="text-xs text-black/40 dark:text-white/40">
+                          根拠: {practiceNameOf(action.practice) ?? action.practice}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm">{action.how}</p>
+                      <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                        期待効果: {action.expectedEffect}
+                      </p>
+                      {action.snippet !== "" && (
+                        <div className="relative mt-2">
+                          <pre className="overflow-x-auto rounded bg-black/5 p-2 pr-24 text-xs dark:bg-white/10">
+                            <code>{action.snippet}</code>
+                          </pre>
+                          <div className="absolute right-1 top-1">
+                            <CopyButton text={action.snippet} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             ))}
 
