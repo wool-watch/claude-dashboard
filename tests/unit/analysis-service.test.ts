@@ -71,7 +71,7 @@ const outcome: RunOutcome = {
 describe("analyzeSession", () => {
   it("分析を実行して保存し、メタデータを埋める", async () => {
     writeLive(UUID_A, basicJsonl);
-    const run = vi.fn(async (_prompt: string, _model: string) => outcome);
+    const run = vi.fn(async (_prompt: string, _options: { model: string }) => outcome);
 
     const saved = await analyzeSession(UUID_A, { run });
 
@@ -79,6 +79,7 @@ describe("analyzeSession", () => {
     expect(saved?.sessionId).toBe(UUID_A);
     expect(saved?.projectId).toBe("-proj-a");
     expect(saved?.model).toBe("haiku"); // デフォルト設定
+    expect(saved?.provider).toBe("claude"); // デフォルトプロバイダ
     expect(saved?.sourceMtimeMs).toBeGreaterThan(0);
     expect(saved?.sourceSize).toBeGreaterThan(0);
     expect(saved?.sessionLastAt).toBe("2026-07-01T00:01:10.000Z");
@@ -93,16 +94,42 @@ describe("analyzeSession", () => {
     expect(prompt).toContain("[ASSISTANT] 回答1");
   });
 
-  it("設定の analysisModel が run に渡る", async () => {
+  it("設定のモデルが run の options に渡る（旧 analysisModel からの移行）", async () => {
     writeLive(UUID_A, basicJsonl);
     writeFileSync(
       path.join(baseDir, "settings.json"),
       JSON.stringify({ retentionDays: null, analysisModel: "sonnet" }),
     );
-    const run = vi.fn(async (_prompt: string, _model: string) => outcome);
+    const run = vi.fn(async (_prompt: string, _options: { model: string }) => outcome);
 
     await analyzeSession(UUID_A, { run });
-    expect(run.mock.calls[0][1]).toBe("sonnet");
+    expect(run.mock.calls[0][1].model).toBe("sonnet");
+  });
+
+  it("アクティブプロバイダの設定がメタデータと run 引数に反映される", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({
+        analysisProvider: "lmstudio",
+        providers: {
+          lmstudio: { model: "qwen3", baseUrl: "http://localhost:1234/v1" },
+        },
+      }),
+    );
+    const run = vi.fn(
+      async (
+        _prompt: string,
+        _options: { model: string },
+        _settings: { analysisProvider: string },
+      ) => outcome,
+    );
+
+    const saved = await analyzeSession(UUID_A, { run });
+    expect(saved?.provider).toBe("lmstudio");
+    expect(saved?.model).toBe("qwen3");
+    expect(run.mock.calls[0][1].model).toBe("qwen3");
+    expect(run.mock.calls[0][2].analysisProvider).toBe("lmstudio");
   });
 
   it("存在しないセッションは null", async () => {

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,10 +23,12 @@ beforeEach(() => {
   baseDir = mkdtempSync(path.join(os.tmpdir(), "claude-dash-prio-"));
   analysisDir = path.join(baseDir, "analysis");
   process.env.CLAUDE_ANALYSIS_DIR = analysisDir;
+  process.env.CLAUDE_SETTINGS_PATH = path.join(baseDir, "settings.json");
 });
 
 afterEach(() => {
   delete process.env.CLAUDE_ANALYSIS_DIR;
+  delete process.env.CLAUDE_SETTINGS_PATH;
   rmSync(baseDir, { recursive: true, force: true });
   vi.restoreAllMocks();
 });
@@ -242,6 +244,43 @@ describe("runPriorityAnalysis（プロジェクト別）", () => {
     releaseA(okOutcome);
     await first;
     expect(isPriorityAnalysisInflight("-proj-a")).toBe(false);
+  });
+});
+
+describe("runPriorityAnalysis: プロバイダ解決", () => {
+  it("model 省略時は設定の claude モデルを使い、provider を保存する", async () => {
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({ providers: { claude: { model: "sonnet" } } }),
+    );
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "改善A"));
+    const run = vi.fn(async (_prompt: string, _options: { model?: string }) => okOutcome);
+
+    const saved = await runPriorityAnalysis(undefined, { run });
+
+    expect(run.mock.calls[0][1].model).toBe("sonnet");
+    expect(saved.model).toBe("sonnet");
+    expect(saved.provider).toBe("claude");
+  });
+
+  it("非 claude プロバイダでは model 引数を無視して設定モデルを使う", async () => {
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({
+        analysisProvider: "lmstudio",
+        providers: {
+          lmstudio: { model: "qwen3", baseUrl: "http://localhost:1234/v1" },
+        },
+      }),
+    );
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "改善A"));
+    const run = vi.fn(async (_prompt: string, _options: { model?: string }) => okOutcome);
+
+    const saved = await runPriorityAnalysis("opus", { run });
+
+    expect(run.mock.calls[0][1].model).toBe("qwen3");
+    expect(saved.model).toBe("qwen3");
+    expect(saved.provider).toBe("lmstudio");
   });
 });
 

@@ -88,8 +88,16 @@ describe("isStoredPriorityAnalysis", () => {
     expect(isStoredPriorityAnalysis({ ...stored, schemaVersion: 99 })).toBe(false);
   });
 
-  it("未知のモデルは false", () => {
-    expect(isStoredPriorityAnalysis({ ...stored, model: "gpt" })).toBe(false);
+  it("model は任意の非空文字列を受理し、空文字・非文字列は false", () => {
+    expect(isStoredPriorityAnalysis({ ...stored, model: "gpt" })).toBe(true);
+    expect(isStoredPriorityAnalysis({ ...stored, model: "" })).toBe(false);
+    expect(isStoredPriorityAnalysis({ ...stored, model: 5 })).toBe(false);
+  });
+
+  it("provider は省略可（旧データ互換）・既知IDのみ受理する", () => {
+    expect(isStoredPriorityAnalysis(stored)).toBe(true); // provider 欠損 = 旧データ
+    expect(isStoredPriorityAnalysis({ ...stored, provider: "gemini" })).toBe(true);
+    expect(isStoredPriorityAnalysis({ ...stored, provider: "chatgpt" })).toBe(false);
   });
 
   it("projectId は文字列を許容し、非文字列は false", () => {

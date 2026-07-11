@@ -91,9 +91,29 @@ describe("isStoredAnalysis", () => {
     expect(isStoredAnalysis(v)).toBe(false);
   });
 
-  it("model が不正なら拒否する", () => {
+  it("model は任意の非空文字列を受理する（他プロバイダのモデル名）", () => {
     const v = validStored() as Record<string, unknown>;
     v.model = "opus";
+    expect(isStoredAnalysis(v)).toBe(true);
+    v.model = "qwen3-8b";
+    expect(isStoredAnalysis(v)).toBe(true);
+  });
+
+  it("model が空文字・非文字列なら拒否する", () => {
+    const v = validStored() as Record<string, unknown>;
+    v.model = "";
+    expect(isStoredAnalysis(v)).toBe(false);
+    v.model = 5;
+    expect(isStoredAnalysis(v)).toBe(false);
+  });
+
+  it("provider は省略可（旧データ互換）・既知IDのみ受理する", () => {
+    const v = validStored() as Record<string, unknown>;
+    expect("provider" in v).toBe(false);
+    expect(isStoredAnalysis(v)).toBe(true); // 旧データは provider 欠損のまま有効
+    v.provider = "lmstudio";
+    expect(isStoredAnalysis(v)).toBe(true);
+    v.provider = "chatgpt";
     expect(isStoredAnalysis(v)).toBe(false);
   });
 });
