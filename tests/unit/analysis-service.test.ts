@@ -19,14 +19,20 @@ import {
   getAnalysisWithStaleness,
   isAnalysisInflight,
 } from "@/lib/analysis/service";
+import { isSessionMetrics } from "@/lib/analysis/metrics";
 import { writeQueue } from "@/lib/analysis/store";
 import { getGlobalCache } from "@/lib/store/cache";
+import { mkAnalysisResult, mkLegacyStoredJson } from "./helpers";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
 
 const basicJsonl = readFileSync(
   fileURLToPath(new URL("../fixtures/basic-session.jsonl", import.meta.url)),
+  "utf8",
+);
+const metricsJsonl = readFileSync(
+  fileURLToPath(new URL("../fixtures/metrics-session.jsonl", import.meta.url)),
   "utf8",
 );
 
@@ -59,12 +65,7 @@ const writeLive = (uuid: string, content: string) => {
 };
 
 const outcome: RunOutcome = {
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: "改善点", category: "その他" }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
+  result: mkAnalysisResult(),
   costUSD: 0.02,
 };
 
@@ -92,6 +93,24 @@ describe("analyzeSession", () => {
     const prompt = run.mock.calls[0][0];
     expect(prompt).toContain("[USER] 最初の質問");
     expect(prompt).toContain("[ASSISTANT] 回答1");
+  });
+
+  it("schemaVersion 2 で定量メトリクスを算出・保存し、プロンプトにも注入する", async () => {
+    writeLive(UUID_A, metricsJsonl);
+    const run = vi.fn(async (_prompt: string) => outcome);
+
+    const saved = await analyzeSession(UUID_A, { run });
+
+    expect(saved?.schemaVersion).toBe(2);
+    expect(isSessionMetrics(saved?.metrics)).toBe(true);
+    expect(saved?.metrics.editOpCount).toBe(4);
+    expect(saved?.metrics.interruptionCount).toBe(2);
+    expect(saved?.metrics.testFailCount).toBe(1);
+
+    const prompt = run.mock.calls[0][0];
+    expect(prompt).toContain("=== 定量メトリクス");
+    expect(prompt).toContain("推定変更行数");
+    expect(prompt).toContain("=== セッション記録 ===");
   });
 
   it("設定のモデルが run の options に渡る（旧 analysisModel からの移行）", async () => {
@@ -232,6 +251,42 @@ describe("getAnalysisWithStaleness", () => {
 
   it("セッションも分析も無ければ null", async () => {
     expect(await getAnalysisWithStaleness(UUID_A)).toBeNull();
+  });
+});
+
+describe("旧 v1 分析データの移行（要再分析扱い）", () => {
+  const writeLegacy = (sessionId: string) => {
+    const dir = path.join(baseDir, "analysis");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, `${sessionId}.json`),
+      JSON.stringify(mkLegacyStoredJson(sessionId)),
+    );
+  };
+
+  it("getAnalysisWithStaleness は analysis null / isStale true を返す", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeLegacy(UUID_A);
+    expect(await getAnalysisWithStaleness(UUID_A)).toEqual({
+      analysis: null,
+      isStale: true,
+    });
+  });
+
+  it("getAnalysisStatusMap は stale として一覧に出す（再分析導線に乗せる）", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeLegacy(UUID_A);
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("stale");
+  });
+
+  it("v1 を再分析すると v2 で上書きされ analyzed に戻る", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeLegacy(UUID_A);
+    await analyzeSession(UUID_A, { run: async () => outcome });
+    expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
+    const got = await getAnalysisWithStaleness(UUID_A);
+    expect(got?.analysis?.schemaVersion).toBe(2);
+    expect(got?.isStale).toBe(false);
   });
 });
 

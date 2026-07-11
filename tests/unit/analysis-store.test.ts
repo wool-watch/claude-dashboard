@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   readAllAnalyses,
   readAnalysis,
+  readLegacyAnalysisRefs,
   readPriorityAnalysis,
   readQueue,
   writeAnalysis,
   writePriorityAnalysis,
   writeQueue,
 } from "@/lib/analysis/store";
+import { mkLegacyStoredJson, mkStoredAnalysis } from "./helpers";
 import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
 import { EMPTY_QUEUE, type StoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
@@ -30,23 +32,7 @@ afterEach(() => {
   rmSync(baseDir, { recursive: true, force: true });
 });
 
-const stored = (sessionId: string): StoredAnalysis => ({
-  schemaVersion: 1,
-  sessionId,
-  projectId: "-proj-a",
-  analyzedAt: "2026-07-10T00:00:00.000Z",
-  model: "haiku",
-  sourceMtimeMs: 1000,
-  sourceSize: 500,
-  sessionLastAt: "2026-07-01T00:01:10.000Z",
-  costUSD: 0.01,
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [{ point: "改善点", category: "その他" }],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
-});
+const stored = (sessionId: string): StoredAnalysis => mkStoredAnalysis(sessionId);
 
 describe("writeAnalysis / readAnalysis", () => {
   it("書き込んだ分析を読み戻せる（ディレクトリ自動作成）", async () => {
@@ -109,6 +95,40 @@ describe("readAllAnalyses", () => {
 
     const all = await readAllAnalyses(analysisDir);
     expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
+  });
+
+  it("旧 v1 形式のファイルはスキップする", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    writeFileSync(
+      path.join(analysisDir, `${UUID_B}.json`),
+      JSON.stringify(mkLegacyStoredJson(UUID_B)),
+    );
+
+    const all = await readAllAnalyses(analysisDir);
+    expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
+  });
+});
+
+describe("readLegacyAnalysisRefs", () => {
+  it("ディレクトリ未作成なら空配列", async () => {
+    expect(await readLegacyAnalysisRefs(analysisDir)).toEqual([]);
+  });
+
+  it("v1 ファイルの sessionId / projectId を返し、v2・破損・無関係ファイルは無視する", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A)); // v2
+    writeFileSync(
+      path.join(analysisDir, `${UUID_B}.json`),
+      JSON.stringify(mkLegacyStoredJson(UUID_B, "-proj-b")),
+    );
+    writeFileSync(
+      path.join(analysisDir, "33333333-3333-3333-3333-333333333333.json"),
+      "{broken",
+    );
+    writeFileSync(path.join(analysisDir, "notes.json"), "{}");
+
+    expect(await readLegacyAnalysisRefs(analysisDir)).toEqual([
+      { sessionId: UUID_B, projectId: "-proj-b" },
+    ]);
   });
 });
 
