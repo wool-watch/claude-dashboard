@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  isLegacyPriorityAnalysisFile,
   readAllAnalyses,
   readAnalysis,
   readLegacyAnalysisRefs,
@@ -12,7 +13,7 @@ import {
   writePriorityAnalysis,
   writeQueue,
 } from "@/lib/analysis/store";
-import { mkLegacyStoredJson, mkStoredAnalysis } from "./helpers";
+import { mkLegacyStoredJson, mkPriorityResult, mkStoredAnalysis } from "./helpers";
 import type { StoredPriorityAnalysis } from "@/lib/analysis/priority-types";
 import { EMPTY_QUEUE, type StoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
@@ -133,9 +134,19 @@ describe("readLegacyAnalysisRefs", () => {
 });
 
 const storedPriority = (): StoredPriorityAnalysis => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   analyzedAt: "2026-07-10T00:00:00.000Z",
   model: "opus",
+  analyzedSessionCount: 3,
+  costUSD: 0.1,
+  result: mkPriorityResult(),
+});
+
+/** 移行前に保存されていた v2 形式（テスト用の生 JSON） */
+const legacyPriorityJson = (): Record<string, unknown> => ({
+  schemaVersion: 2,
+  analyzedAt: "2026-07-01T00:00:00.000Z",
+  model: "sonnet",
   analyzedSessionCount: 3,
   costUSD: 0.1,
   result: {
@@ -219,6 +230,39 @@ describe("writePriorityAnalysis / readPriorityAnalysis（プロジェクト別�
 
     const all = await readAllAnalyses(analysisDir);
     expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
+  });
+});
+
+describe("isLegacyPriorityAnalysisFile", () => {
+  it("旧 v2 ファイルは true になり、readPriorityAnalysis は null", async () => {
+    await writePriorityAnalysis(analysisDir, storedPriority()); // ディレクトリ作成
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.json"),
+      JSON.stringify(legacyPriorityJson()),
+    );
+    expect(await readPriorityAnalysis(analysisDir)).toBeNull();
+    expect(await isLegacyPriorityAnalysisFile(analysisDir)).toBe(true);
+  });
+
+  it("プロジェクト別ファイルも判定でき、グローバルとは独立", async () => {
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.-proj-a.json"),
+      JSON.stringify(legacyPriorityJson()),
+    );
+    expect(await isLegacyPriorityAnalysisFile(analysisDir, "-proj-a")).toBe(true);
+    expect(await isLegacyPriorityAnalysisFile(analysisDir)).toBe(false); // v3
+  });
+
+  it("v3・未保存・破損・不正 projectId は false", async () => {
+    expect(await isLegacyPriorityAnalysisFile(analysisDir)).toBe(false); // 未保存
+
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    expect(await isLegacyPriorityAnalysisFile(analysisDir)).toBe(false); // v3
+
+    writeFileSync(path.join(analysisDir, "priority-analysis.json"), "{broken");
+    expect(await isLegacyPriorityAnalysisFile(analysisDir)).toBe(false);
+    expect(await isLegacyPriorityAnalysisFile(analysisDir, "../etc")).toBe(false);
   });
 });
 
