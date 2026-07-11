@@ -230,10 +230,18 @@ describe("syncArchive: 分析結果の孤児クリーンアップ", () => {
   };
 
   it("セッションがライブ・アーカイブ双方に無ければ分析JSONを削除する", async () => {
+    writeLive("-proj-a", UUID_B, "living\n"); // 生存セッションが1件でもあれば掃除は有効
     const orphan = writeAnalysisFile(UUID_A);
     const result = await sync();
     expect(result.prunedAnalyses).toBe(1);
     expect(existsSync(orphan)).toBe(false);
+  });
+
+  it("ライブ・アーカイブ双方にセッションが1件も無ければ削除をスキップする（全滅ガード）", async () => {
+    const orphan = writeAnalysisFile(UUID_A);
+    const result = await sync();
+    expect(result.prunedAnalyses).toBe(0);
+    expect(existsSync(orphan)).toBe(true);
   });
 
   it("ライブに存在するセッションの分析は保持する", async () => {
