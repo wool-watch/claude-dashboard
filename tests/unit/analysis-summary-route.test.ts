@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as getAnalysisSummary } from "@/app/api/analysis/summary/route";
 import { writeAnalysis } from "@/lib/analysis/store";
-import type { StoredAnalysis } from "@/lib/analysis/types";
+import type { ImprovementCategory, StoredAnalysis } from "@/lib/analysis/types";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -27,7 +27,7 @@ afterEach(() => {
 const stored = (
   sessionId: string,
   projectId: string,
-  category: string,
+  category: ImprovementCategory,
 ): StoredAnalysis => ({
   schemaVersion: 1,
   sessionId,
