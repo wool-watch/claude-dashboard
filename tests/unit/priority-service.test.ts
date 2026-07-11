@@ -1,13 +1,13 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getPriorityAnalysis,
+  getPriorityAnalysisState,
   isPriorityAnalysisInflight,
   runPriorityAnalysis,
 } from "@/lib/analysis/priority-service";
-import type { PriorityAnalysisResult } from "@/lib/analysis/priority-types";
+import { PRIORITY_JSON_SCHEMA } from "@/lib/analysis/priority-types";
 import {
   AnalysisError,
   type RunJsonOptions,
@@ -15,7 +15,7 @@ import {
 } from "@/lib/analysis/runner";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { ImprovementCategory, StoredAnalysis } from "@/lib/analysis/types";
-import { mkAnalysisResult, mkStoredAnalysis } from "./helpers";
+import { mkAnalysisResult, mkPriorityResult, mkStoredAnalysis } from "./helpers";
 
 let baseDir: string;
 let analysisDir: string;
@@ -51,17 +51,7 @@ const mkAnalysis = (
     result: mkAnalysisResult({ improvements: [{ action, category }] }),
   });
 
-const priorityResult: PriorityAnalysisResult = {
-  pickedIssues: [
-    {
-      point: "着手前の計画・タスク分解が不足している",
-      category: "計画不足",
-      reason: "頻出のため",
-      actions: ["依頼を3ステップに分ける"],
-    },
-  ],
-  summary: "全体講評。",
-};
+const priorityResult = mkPriorityResult();
 
 const okOutcome: RunJsonOutcome = { result: priorityResult, costUSD: 0.1 };
 
@@ -99,6 +89,23 @@ describe("runPriorityAnalysis", () => {
     expect(options.model).toBe("opus");
   });
 
+  it("プロンプトにベストプラクティスカタログが選択注入され、v3 スキーマで実行する", async () => {
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "改善A"));
+    const run = vi.fn(async (_prompt: string, _options: RunJsonOptions) => okOutcome);
+
+    await runPriorityAnalysis("sonnet", { run });
+
+    const [prompt, options] = run.mock.calls[0];
+    // 入力カテゴリ（計画不足）に対応するプラクティスが根拠として注入される
+    expect(prompt).toContain("ベストプラクティスカタログ");
+    expect(prompt).toContain("[plan-first]");
+    expect(prompt).toContain("[wbs]");
+    // 出力指示は構造化アクション（practice / snippet 含む）
+    expect(prompt).toContain("practice");
+    expect(prompt).toContain("snippet");
+    expect(options.jsonSchema).toBe(PRIORITY_JSON_SCHEMA);
+  });
+
   it("sessionLastAt 降順で最新20件のみ入力に使う", async () => {
     for (let n = 1; n <= 21; n++) {
       const day = String(n).padStart(2, "0");
@@ -124,12 +131,13 @@ describe("runPriorityAnalysis", () => {
 
     const saved = await runPriorityAnalysis("sonnet", { run });
 
+    expect(saved.schemaVersion).toBe(3);
     expect(saved.model).toBe("sonnet");
     expect(saved.analyzedSessionCount).toBe(1);
     expect(saved.costUSD).toBe(0.1);
     expect(saved.result.summary).toBe("全体講評。");
     expect(existsSync(path.join(analysisDir, "priority-analysis.json"))).toBe(true);
-    expect((await getPriorityAnalysis())?.model).toBe("sonnet");
+    expect((await getPriorityAnalysisState()).priority?.model).toBe("sonnet");
   });
 
   it("スキーマ不適合の結果は invalid-output", async () => {
@@ -190,8 +198,10 @@ describe("runPriorityAnalysis（プロジェクト別）", () => {
     ).toBe(true);
     // グローバルの保存先は書かれない
     expect(existsSync(path.join(analysisDir, "priority-analysis.json"))).toBe(false);
-    expect((await getPriorityAnalysis("-proj-a"))?.projectId).toBe("-proj-a");
-    expect(await getPriorityAnalysis()).toBeNull();
+    expect((await getPriorityAnalysisState("-proj-a")).priority?.projectId).toBe(
+      "-proj-a",
+    );
+    expect((await getPriorityAnalysisState()).priority).toBeNull();
   });
 
   it("該当プロジェクトの分析が0件なら no-analyses", async () => {
@@ -276,9 +286,52 @@ describe("runPriorityAnalysis: プロバイダ解決", () => {
   });
 });
 
-describe("getPriorityAnalysis", () => {
-  it("未保存は null", async () => {
-    expect(await getPriorityAnalysis()).toBeNull();
-    expect(await getPriorityAnalysis("-proj-a")).toBeNull();
+describe("getPriorityAnalysisState", () => {
+  it("未保存は priority null・isLegacy false", async () => {
+    expect(await getPriorityAnalysisState()).toEqual({
+      priority: null,
+      isLegacy: false,
+    });
+    expect(await getPriorityAnalysisState("-proj-a")).toEqual({
+      priority: null,
+      isLegacy: false,
+    });
+  });
+
+  it("旧 v2 ファイルは priority null・isLegacy true、v3 で再分析すると解消する", async () => {
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(
+      path.join(analysisDir, "priority-analysis.json"),
+      JSON.stringify({
+        schemaVersion: 2,
+        analyzedAt: "2026-07-01T00:00:00.000Z",
+        model: "sonnet",
+        analyzedSessionCount: 3,
+        costUSD: null,
+        result: {
+          pickedIssues: [
+            {
+              point: "課題",
+              category: "計画不足",
+              reason: "理由",
+              actions: ["旧形式のアクション"],
+            },
+          ],
+          summary: "講評。",
+        },
+      }),
+    );
+    expect(await getPriorityAnalysisState()).toEqual({
+      priority: null,
+      isLegacy: true,
+    });
+
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "改善A"));
+    const run = vi.fn(async () => okOutcome);
+    await runPriorityAnalysis("haiku", { run });
+
+    const state = await getPriorityAnalysisState();
+    expect(state.isLegacy).toBe(false);
+    expect(state.priority?.schemaVersion).toBe(3);
   });
 });
