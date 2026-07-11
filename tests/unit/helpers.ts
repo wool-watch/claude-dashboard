@@ -1,4 +1,8 @@
 import type { SessionMetrics } from "@/lib/analysis/metrics";
+import type {
+  PriorityAction,
+  PriorityAnalysisResult,
+} from "@/lib/analysis/priority-types";
 import type { AnalysisResult, StoredAnalysis } from "@/lib/analysis/types";
 import {
   addUsage,
@@ -64,6 +68,33 @@ export const mkStoredAnalysis = (
   costUSD: 0.01,
   metrics: mkMetrics(),
   result: mkAnalysisResult(),
+  ...over,
+});
+
+export const mkPriorityAction = (
+  over: Partial<PriorityAction> = {},
+): PriorityAction => ({
+  title: "計画モードで方針を合意してから着手する",
+  kind: "ワークフロー",
+  practice: "plan-first",
+  how: "実装依頼の前に計画モードで変更対象と完了条件を提示させ、合意してから実装に進める",
+  expectedEffect: "計画スコア（平均2）の改善と割り込み回数の減少が見込める",
+  snippet: "",
+  ...over,
+});
+
+export const mkPriorityResult = (
+  over: Partial<PriorityAnalysisResult> = {},
+): PriorityAnalysisResult => ({
+  pickedIssues: [
+    {
+      point: "着手前の計画・タスク分解が不足している",
+      category: "計画不足",
+      reason: "直近の分析で最も頻出し、計画スコアの平均も低いため",
+      actions: [mkPriorityAction()],
+    },
+  ],
+  summary: "全体講評。",
   ...over,
 });
 
