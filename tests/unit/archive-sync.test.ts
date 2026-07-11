@@ -15,6 +15,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runArchiveSync, syncArchive } from "@/lib/archive/sync";
 import { getConfig } from "@/lib/config";
+import { DEFAULT_SETTINGS } from "@/lib/settings/settings";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -54,7 +55,7 @@ const archivePath = (projectId: string, uuid: string) =>
   path.join(archiveDir, projectId, `${uuid}.jsonl`);
 
 const sync = (retentionDays: 30 | 90 | 120 | 150 | 180 | null = null, now?: Date) =>
-  syncArchive(getConfig(), { retentionDays, analysisModel: "haiku" }, now);
+  syncArchive(getConfig(), { ...DEFAULT_SETTINGS, retentionDays }, now);
 
 describe("syncArchive: コピー", () => {
   it("ライブのセッションファイルをアーカイブへミラーし mtime を保存する", async () => {

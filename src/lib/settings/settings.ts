@@ -177,7 +177,9 @@ function normalizeProvider<P extends ProviderId>(
   for (const key of Object.keys(parsers)) {
     if (!(key in record)) continue;
     try {
-      (out as Record<string, unknown>)[key] = parsers[key](record[key]);
+      (out as unknown as Record<string, unknown>)[key] = parsers[key](
+        record[key],
+      );
     } catch {}
   }
   return out;
@@ -289,7 +291,10 @@ export function applyProvidersPatch(
       string,
       (raw: unknown) => unknown
     >;
-    const target = settings.providers[providerId] as Record<string, unknown>;
+    const target = settings.providers[providerId] as unknown as Record<
+      string,
+      unknown
+    >;
     for (const [key, value] of Object.entries(record)) {
       if (!(key in parsers)) {
         throw new ApiQueryError(`unknown key providers.${providerId}.${key}`);
