@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getPriority, POST as postPriority } from "@/app/api/analysis/priority/route";
 import { writeAnalysis } from "@/lib/analysis/store";
 import type { StoredAnalysis } from "@/lib/analysis/types";
@@ -28,11 +28,14 @@ beforeEach(() => {
   baseDir = mkdtempSync(path.join(os.tmpdir(), "claude-dash-prio-route-"));
   analysisDir = path.join(baseDir, "analysis");
   process.env.CLAUDE_ANALYSIS_DIR = analysisDir;
+  process.env.CLAUDE_SETTINGS_PATH = path.join(baseDir, "settings.json");
 });
 
 afterEach(() => {
   delete process.env.CLAUDE_ANALYSIS_DIR;
   delete process.env.CLAUDE_CLI_PATH;
+  delete process.env.CLAUDE_SETTINGS_PATH;
+  vi.unstubAllGlobals();
   rmSync(baseDir, { recursive: true, force: true });
 });
 
@@ -115,6 +118,76 @@ describe("POST /api/analysis/priority", () => {
     const res = await postPriority(postReq({ model: "haiku" }));
     expect(res.status).toBe(502);
     expect((await res.json()).error).toContain("budget exceeded");
+  });
+});
+
+describe("POST /api/analysis/priority: プロバイダ対応", () => {
+  it("model 省略時は設定のモデルで実行する", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis());
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({ providers: { claude: { model: "sonnet" } } }),
+    );
+    okCli();
+
+    const res = await postPriority(postReq({}));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.priority.model).toBe("sonnet");
+    expect(body.priority.provider).toBe("claude");
+  });
+
+  it("lmstudio プロバイダなら fetch 経由で実行し model 指定は無視する", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis());
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({
+        analysisProvider: "lmstudio",
+        providers: {
+          lmstudio: { model: "qwen3", baseUrl: "http://localhost:1234/v1" },
+        },
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(priorityResult) } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const res = await postPriority(postReq({ model: "opus" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.priority.provider).toBe("lmstudio");
+    expect(body.priority.model).toBe("qwen3");
+  });
+
+  it("接続失敗は 502 で接続エラーメッセージを返す", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis());
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({
+        analysisProvider: "lmstudio",
+        providers: {
+          lmstudio: { model: "qwen3", baseUrl: "http://localhost:1234/v1" },
+        },
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }),
+    );
+
+    const res = await postPriority(postReq({}));
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toContain("接続できません");
   });
 });
 

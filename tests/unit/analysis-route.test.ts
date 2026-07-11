@@ -114,6 +114,40 @@ describe("POST /api/sessions/[id]/analyze", () => {
     expect(existsSync(path.join(baseDir, "analysis", `${UUID_A}.json`))).toBe(true);
   });
 
+  it("設定プロバイダが lmstudio なら fetch 経由で分析し provider を保存する", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeFileSync(
+      path.join(baseDir, "settings.json"),
+      JSON.stringify({
+        analysisProvider: "lmstudio",
+        providers: {
+          lmstudio: { model: "qwen3", baseUrl: "http://localhost:1234/v1" },
+        },
+      }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(validResult) } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    const res = await postAnalyze(
+      req(`/api/sessions/${UUID_A}/analyze`, "POST"),
+      ctx(UUID_A),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.analysis.provider).toBe("lmstudio");
+    expect(body.analysis.model).toBe("qwen3");
+    vi.unstubAllGlobals();
+  });
+
   it("CLI が is_error を返したら 502 でメッセージ露出", async () => {
     writeLive(UUID_A, basicJsonl);
     setFakeCli(
