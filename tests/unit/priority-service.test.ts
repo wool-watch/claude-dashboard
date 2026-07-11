@@ -14,7 +14,8 @@ import {
   type RunJsonOutcome,
 } from "@/lib/analysis/runner";
 import { writeAnalysis } from "@/lib/analysis/store";
-import type { StoredAnalysis } from "@/lib/analysis/types";
+import type { ImprovementCategory, StoredAnalysis } from "@/lib/analysis/types";
+import { mkAnalysisResult, mkStoredAnalysis } from "./helpers";
 
 let baseDir: string;
 let analysisDir: string;
@@ -39,34 +40,22 @@ const uuidOf = (n: number) =>
 const mkAnalysis = (
   n: number,
   lastAt: string,
-  point: string,
-  category = "タスク分割",
+  action: string,
+  category: ImprovementCategory = "計画不足",
   projectId = "-proj-a",
-): StoredAnalysis => ({
-  schemaVersion: 1,
-  sessionId: uuidOf(n),
-  projectId,
-  analyzedAt: lastAt,
-  model: "haiku",
-  sourceMtimeMs: 1000,
-  sourceSize: 500,
-  sessionLastAt: lastAt,
-  costUSD: 0.01,
-  result: {
-    summary: "要約。",
-    goodPoints: ["良い点"],
-    improvements: [
-      { point, category: category as StoredAnalysis["result"]["improvements"][number]["category"] },
-    ],
-    scores: { instructionClarity: 4, efficiency: 3, goalAchievement: 5 },
-  },
-});
+): StoredAnalysis =>
+  mkStoredAnalysis(uuidOf(n), {
+    projectId,
+    analyzedAt: lastAt,
+    sessionLastAt: lastAt,
+    result: mkAnalysisResult({ improvements: [{ action, category }] }),
+  });
 
 const priorityResult: PriorityAnalysisResult = {
   pickedIssues: [
     {
-      point: "タスクを小さく分割すると良い",
-      category: "タスク分割",
+      point: "着手前の計画・タスク分解が不足している",
+      category: "計画不足",
       reason: "頻出のため",
       actions: ["依頼を3ステップに分ける"],
     },
@@ -89,7 +78,7 @@ describe("runPriorityAnalysis", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it("プロンプトに改善点・カテゴリ・優先指示が含まれ、モデルが渡る", async () => {
+  it("プロンプトに改善点・カテゴリ・定量ダイジェスト・優先指示が含まれ、モデルが渡る", async () => {
     await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "改善A"));
     await writeAnalysis(
       analysisDir,
@@ -102,8 +91,11 @@ describe("runPriorityAnalysis", () => {
     const [prompt, options] = run.mock.calls[0];
     expect(prompt).toContain("改善A");
     expect(prompt).toContain("改善B");
-    expect(prompt).toContain("タスク分割");
+    expect(prompt).toContain("計画不足");
     expect(prompt).toContain("優先");
+    // 各行に定量ダイジェスト（mkMetrics: +120/-80行、エラー 2/8 = 25%）
+    expect(prompt).toContain("変更+120/-80行");
+    expect(prompt).toContain("エラー率25%");
     expect(options.model).toBe("opus");
   });
 

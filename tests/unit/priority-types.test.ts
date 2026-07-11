@@ -7,8 +7,8 @@ import {
 } from "@/lib/analysis/priority-types";
 
 const issue = {
-  point: "タスクを小さく分割すると良い",
-  category: "タスク分割",
+  point: "着手前の計画・タスク分解が不足している",
+  category: "計画不足",
   reason: "直近の分析で最も頻出しているため",
   actions: ["大きな依頼を3ステップに分けて指示する"],
 };
@@ -16,7 +16,7 @@ const issue = {
 const result = { pickedIssues: [issue], summary: "全体講評。" };
 
 const stored = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   analyzedAt: "2026-07-10T00:00:00.000Z",
   model: "opus",
   analyzedSessionCount: 5,
@@ -42,11 +42,17 @@ describe("isPriorityAnalysisResult", () => {
     ).toBe(false);
   });
 
-  it("category 不正は false", () => {
+  it("category 不正（旧カテゴリ含む）は false", () => {
     expect(
       isPriorityAnalysisResult({
         ...result,
         pickedIssues: [{ ...issue, category: "存在しないカテゴリ" }],
+      }),
+    ).toBe(false);
+    expect(
+      isPriorityAnalysisResult({
+        ...result,
+        pickedIssues: [{ ...issue, category: "タスク分割" }], // v1 のカテゴリ
       }),
     ).toBe(false);
   });
@@ -84,8 +90,9 @@ describe("isStoredPriorityAnalysis", () => {
     expect(isStoredPriorityAnalysis({ ...stored, model: "haiku" })).toBe(true);
   });
 
-  it("schemaVersion 不一致は false", () => {
+  it("schemaVersion 不一致（旧 v1 含む）は false", () => {
     expect(isStoredPriorityAnalysis({ ...stored, schemaVersion: 99 })).toBe(false);
+    expect(isStoredPriorityAnalysis({ ...stored, schemaVersion: 1 })).toBe(false);
   });
 
   it("model は任意の非空文字列を受理し、空文字・非文字列は false", () => {
