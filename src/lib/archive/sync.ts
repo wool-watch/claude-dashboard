@@ -83,6 +83,8 @@ export async function syncArchive(
     settings.retentionDays === null
       ? null
       : now.getTime() - settings.retentionDays * DAY_MS;
+  // 保持期間切れの削除前にアーカイブへ実在したセッションの有無（全滅ガードの判定材料）
+  let sawArchivedSession = false;
   for (const projectId of await listProjectDirs(config.archiveDir)) {
     const archProjectDir = path.join(config.archiveDir, projectId);
     let files: string[];
@@ -99,6 +101,7 @@ export async function syncArchive(
           continue;
         }
         if (!SESSION_FILE_RE.test(file)) continue;
+        sawArchivedSession = true;
         if (cutoffMs === null) continue;
         if (livePaths.has(`${projectId}/${file}`)) continue; // ライブに在る間は消さない
         const st = await fs.stat(filePath);
@@ -134,6 +137,13 @@ export async function syncArchive(
       }
     }
   }
+  // 全滅ガード: この実行中にセッションを1件も観測できなかったときは削除しない。
+  // 一時的な読み取り失敗や誤設定（dataDir/archiveDir の差し替え漏れ等）で
+  // 全分析を失わないための防御。セッションが現れれば次回の同期で掃除は再開される。
+  // 保持期間切れで直前に削除したものは観測済み（sawArchivedSession）なので、
+  // 「期限切れと同じ実行で分析も消える」挙動は維持される
+  if (livingSessionIds.size === 0 && !sawArchivedSession) return result;
+
   let analysisFiles: string[];
   try {
     analysisFiles = await fs.readdir(config.analysisDir);
