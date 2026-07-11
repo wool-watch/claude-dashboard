@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -158,6 +158,47 @@ describe("writePriorityAnalysis / readPriorityAnalysis", () => {
       JSON.stringify({ ...storedPriority(), schemaVersion: 99 }),
     );
     expect(await readPriorityAnalysis(analysisDir)).toBeNull();
+  });
+});
+
+describe("writePriorityAnalysis / readPriorityAnalysis（プロジェクト別）", () => {
+  it("projectId 指定で別ファイルに保存されグローバルと独立", async () => {
+    await writePriorityAnalysis(analysisDir, storedPriority());
+    const forProject = {
+      ...storedPriority(),
+      projectId: "-proj-a",
+      analyzedSessionCount: 7,
+    };
+    await writePriorityAnalysis(analysisDir, forProject, "-proj-a");
+
+    expect(
+      existsSync(path.join(analysisDir, "priority-analysis.-proj-a.json")),
+    ).toBe(true);
+    expect(
+      (await readPriorityAnalysis(analysisDir, "-proj-a"))?.analyzedSessionCount,
+    ).toBe(7);
+    // グローバルは従来ファイル・従来値のまま
+    expect(
+      (await readPriorityAnalysis(analysisDir))?.analyzedSessionCount,
+    ).toBe(3);
+  });
+
+  it("不正な projectId は read で null（パストラバーサル防止）", async () => {
+    expect(await readPriorityAnalysis(analysisDir, "../etc")).toBeNull();
+    expect(await readPriorityAnalysis(analysisDir, "a/b")).toBeNull();
+    expect(await readPriorityAnalysis(analysisDir, "")).toBeNull();
+  });
+
+  it("readAllAnalyses はプロジェクト別ファイルも無視する", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    await writePriorityAnalysis(
+      analysisDir,
+      { ...storedPriority(), projectId: "-proj-a" },
+      "-proj-a",
+    );
+
+    const all = await readAllAnalyses(analysisDir);
+    expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
   });
 });
 

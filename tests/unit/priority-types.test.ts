@@ -91,6 +91,11 @@ describe("isStoredPriorityAnalysis", () => {
   it("未知のモデルは false", () => {
     expect(isStoredPriorityAnalysis({ ...stored, model: "gpt" })).toBe(false);
   });
+
+  it("projectId は文字列を許容し、非文字列は false", () => {
+    expect(isStoredPriorityAnalysis({ ...stored, projectId: "-proj-a" })).toBe(true);
+    expect(isStoredPriorityAnalysis({ ...stored, projectId: 123 })).toBe(false);
+  });
 });
 
 describe("parsePriorityAnalysisModel", () => {

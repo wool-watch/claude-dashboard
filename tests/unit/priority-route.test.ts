@@ -1,7 +1,7 @@
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as getPriority, POST as postPriority } from "@/app/api/analysis/priority/route";
 import { writeAnalysis } from "@/lib/analysis/store";
@@ -135,5 +135,57 @@ describe("GET /api/analysis/priority", () => {
     expect(body.priority.model).toBe("sonnet");
     expect(body.priority.analyzedSessionCount).toBe(1);
     expect(body.isAnalyzing).toBe(false);
+  });
+});
+
+const getReq = (url: string) => new NextRequest(`http://127.0.0.1:3947${url}`);
+
+describe("プロジェクト別の優先課題分析", () => {
+  it("POST { model, project } でプロジェクト別に保存し projectId を返す", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis()); // projectId "-proj-a"
+    okCli();
+
+    const res = await postPriority(postReq({ model: "haiku", project: "-proj-a" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.priority.projectId).toBe("-proj-a");
+    expect(
+      existsSync(path.join(analysisDir, "priority-analysis.-proj-a.json")),
+    ).toBe(true);
+    expect(existsSync(path.join(analysisDir, "priority-analysis.json"))).toBe(false);
+  });
+
+  it("不正な project は 400", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis());
+    okCli();
+    expect(
+      (await postPriority(postReq({ model: "haiku", project: "../etc" }))).status,
+    ).toBe(400);
+    expect(
+      (await postPriority(postReq({ model: "haiku", project: 123 }))).status,
+    ).toBe(400);
+    expect(
+      (await postPriority(postReq({ model: "haiku", project: "" }))).status,
+    ).toBe(400);
+  });
+
+  it("GET ?project= はプロジェクト別の結果を返し、グローバルとは独立", async () => {
+    await writeAnalysis(analysisDir, storedAnalysis());
+    okCli();
+    await postPriority(postReq({ model: "sonnet", project: "-proj-a" }));
+
+    const res = await getPriority(getReq("/api/analysis/priority?project=-proj-a"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.priority.projectId).toBe("-proj-a");
+    expect(body.isAnalyzing).toBe(false);
+
+    const globalRes = await getPriority();
+    expect((await globalRes.json()).priority).toBeNull();
+  });
+
+  it("GET の不正な project は 400", async () => {
+    const res = await getPriority(getReq("/api/analysis/priority?project=a/b"));
+    expect(res.status).toBe(400);
   });
 });

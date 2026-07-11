@@ -39,10 +39,11 @@ const mkAnalysis = (
   lastAt: string,
   point: string,
   category = "タスク分割",
+  projectId = "-proj-a",
 ): StoredAnalysis => ({
   schemaVersion: 1,
   sessionId: uuidOf(n),
-  projectId: "-proj-a",
+  projectId,
   analyzedAt: lastAt,
   model: "haiku",
   sourceMtimeMs: 1000,
@@ -174,8 +175,79 @@ describe("runPriorityAnalysis", () => {
   });
 });
 
+describe("runPriorityAnalysis（プロジェクト別）", () => {
+  it("projectId 指定で該当プロジェクトの分析のみ入力にし、プロジェクト別ファイルへ保存する", async () => {
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "Aの改善"));
+    await writeAnalysis(
+      analysisDir,
+      mkAnalysis(2, "2026-07-02T00:00:00.000Z", "Bの改善", "その他", "-proj-b"),
+    );
+    const run = vi.fn(async (_prompt: string) => okOutcome);
+
+    const saved = await runPriorityAnalysis("sonnet", { run }, "-proj-a");
+
+    const prompt = run.mock.calls[0][0];
+    expect(prompt).toContain("Aの改善");
+    expect(prompt).not.toContain("Bの改善");
+    expect(saved.projectId).toBe("-proj-a");
+    expect(saved.analyzedSessionCount).toBe(1);
+    expect(
+      existsSync(path.join(analysisDir, "priority-analysis.-proj-a.json")),
+    ).toBe(true);
+    // グローバルの保存先は書かれない
+    expect(existsSync(path.join(analysisDir, "priority-analysis.json"))).toBe(false);
+    expect((await getPriorityAnalysis("-proj-a"))?.projectId).toBe("-proj-a");
+    expect(await getPriorityAnalysis()).toBeNull();
+  });
+
+  it("該当プロジェクトの分析が0件なら no-analyses", async () => {
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "Aの改善"));
+    const run = vi.fn(async () => okOutcome);
+
+    await expect(
+      runPriorityAnalysis("haiku", { run }, "-proj-zzz"),
+    ).rejects.toMatchObject({ kind: "no-analyses" });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("in-flight はプロジェクト別（同一のみブロック・グローバルや別プロジェクトは並行可）", async () => {
+    await writeAnalysis(analysisDir, mkAnalysis(1, "2026-07-01T00:00:00.000Z", "Aの改善"));
+    await writeAnalysis(
+      analysisDir,
+      mkAnalysis(2, "2026-07-02T00:00:00.000Z", "Bの改善", "その他", "-proj-b"),
+    );
+    let releaseA: (v: RunJsonOutcome) => void = () => {};
+    const gateA = new Promise<RunJsonOutcome>((resolve) => {
+      releaseA = resolve;
+    });
+    const runGated = vi.fn(() => gateA);
+
+    const first = runPriorityAnalysis("haiku", { run: runGated }, "-proj-a");
+    await vi.waitFor(() => expect(runGated).toHaveBeenCalledOnce());
+
+    expect(isPriorityAnalysisInflight("-proj-a")).toBe(true);
+    expect(isPriorityAnalysisInflight()).toBe(false);
+    expect(isPriorityAnalysisInflight("-proj-b")).toBe(false);
+
+    await expect(
+      runPriorityAnalysis("haiku", { run: runGated }, "-proj-a"),
+    ).rejects.toMatchObject({ kind: "in-flight" });
+
+    // 別プロジェクト・グローバルはブロックされない
+    const runOk = vi.fn(async () => okOutcome);
+    await runPriorityAnalysis("haiku", { run: runOk }, "-proj-b");
+    await runPriorityAnalysis("haiku", { run: runOk });
+    expect(runOk).toHaveBeenCalledTimes(2);
+
+    releaseA(okOutcome);
+    await first;
+    expect(isPriorityAnalysisInflight("-proj-a")).toBe(false);
+  });
+});
+
 describe("getPriorityAnalysis", () => {
   it("未保存は null", async () => {
     expect(await getPriorityAnalysis()).toBeNull();
+    expect(await getPriorityAnalysis("-proj-a")).toBeNull();
   });
 });
