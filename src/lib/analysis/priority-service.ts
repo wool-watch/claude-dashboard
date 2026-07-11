@@ -28,11 +28,22 @@ const RECENT_ANALYSES_LIMIT = 20;
 
 declare global {
   // Next.js dev の HMR でモジュールが再評価されても実行中の分析を追跡し続ける
-  var __claudeDashboardPriorityInflight: Promise<unknown> | undefined;
+  // キーは projectId（グローバル分析は ""）
+  var __claudeDashboardPriorityInflight: Map<string, Promise<unknown>> | undefined;
 }
 
-export function isPriorityAnalysisInflight(): boolean {
-  return globalThis.__claudeDashboardPriorityInflight !== undefined;
+function getInflightMap(): Map<string, Promise<unknown>> {
+  // 旧実装（単一 Promise）が HMR で残っていても Map で上書きする
+  if (!(globalThis.__claudeDashboardPriorityInflight instanceof Map)) {
+    globalThis.__claudeDashboardPriorityInflight = new Map();
+  }
+  return globalThis.__claudeDashboardPriorityInflight;
+}
+
+const inflightKeyOf = (projectId?: string): string => projectId ?? "";
+
+export function isPriorityAnalysisInflight(projectId?: string): boolean {
+  return getInflightMap().has(inflightKeyOf(projectId));
 }
 
 const SYSTEM_PROMPT =
@@ -80,14 +91,18 @@ ${itemLines}
 
 /**
  * 保存済みの振り返り分析を横断して優先課題を深掘り分析し、保存する。
- * - 実行中の再実行は AnalysisError("in-flight")
- * - 保存済み分析が0件なら AnalysisError("no-analyses")
+ * projectId 指定時はそのプロジェクトの分析のみを入力にし、プロジェクト別に保存する。
+ * - 同一対象（グローバル / 同一プロジェクト）の再実行は AnalysisError("in-flight")
+ * - 対象の保存済み分析が0件なら AnalysisError("no-analyses")
  */
 export async function runPriorityAnalysis(
   model: PriorityAnalysisModel,
   deps: { run: RunJsonFn } = { run: runClaudeJson },
+  projectId?: string,
 ): Promise<StoredPriorityAnalysis> {
-  if (isPriorityAnalysisInflight()) {
+  const inflight = getInflightMap();
+  const key = inflightKeyOf(projectId);
+  if (inflight.has(key)) {
     throw new AnalysisError(
       "優先課題の分析は実行中です。完了までお待ちください",
       "in-flight",
@@ -95,10 +110,16 @@ export async function runPriorityAnalysis(
   }
   const promise = (async (): Promise<StoredPriorityAnalysis> => {
     const config = getConfig();
-    const analyses = await readAllAnalyses(config.analysisDir);
+    const all = await readAllAnalyses(config.analysisDir);
+    const analyses =
+      projectId === undefined
+        ? all
+        : all.filter((a) => a.projectId === projectId);
     if (analyses.length === 0) {
       throw new AnalysisError(
-        "保存済みのAI振り返りがありません。先にセッション詳細から分析を実行してください",
+        projectId === undefined
+          ? "保存済みのAI振り返りがありません。先にセッション詳細から分析を実行してください"
+          : "このプロジェクトの保存済みAI振り返りがありません。先にセッション詳細から分析を実行してください",
         "no-analyses",
       );
     }
@@ -122,20 +143,23 @@ export async function runPriorityAnalysis(
       schemaVersion: 1,
       analyzedAt: new Date().toISOString(),
       model,
+      ...(projectId !== undefined && { projectId }),
       analyzedSessionCount: recent.length,
       costUSD: outcome.costUSD,
       result: outcome.result,
     };
-    await writePriorityAnalysis(config.analysisDir, stored);
+    await writePriorityAnalysis(config.analysisDir, stored, projectId);
     return stored;
   })().finally(() => {
-    globalThis.__claudeDashboardPriorityInflight = undefined;
+    inflight.delete(key);
   });
-  globalThis.__claudeDashboardPriorityInflight = promise;
+  inflight.set(key, promise);
   return promise;
 }
 
-/** 保存済みの優先課題分析（未実行なら null） */
-export async function getPriorityAnalysis(): Promise<StoredPriorityAnalysis | null> {
-  return readPriorityAnalysis(getConfig().analysisDir);
+/** 保存済みの優先課題分析（未実行なら null。projectId 指定でプロジェクト別） */
+export async function getPriorityAnalysis(
+  projectId?: string,
+): Promise<StoredPriorityAnalysis | null> {
+  return readPriorityAnalysis(getConfig().analysisDir, projectId);
 }

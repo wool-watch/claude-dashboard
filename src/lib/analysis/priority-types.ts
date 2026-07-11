@@ -34,11 +34,17 @@ export interface PriorityAnalysisResult {
   summary: string;
 }
 
-/** analysisDir/priority-analysis.json に保存する形式（1件のみ） */
+/**
+ * 優先課題分析の保存形式。
+ * グローバルは analysisDir/priority-analysis.json、
+ * プロジェクト別は analysisDir/priority-analysis.<projectId>.json に各1件。
+ */
 export interface StoredPriorityAnalysis {
   schemaVersion: 1;
   analyzedAt: string;
   model: PriorityAnalysisModel;
+  /** 対象プロジェクト（グローバル分析は undefined） */
+  projectId?: string;
   /** 入力に使った振り返り分析の件数 */
   analyzedSessionCount: number;
   costUSD: number | null;
@@ -88,6 +94,7 @@ export function isStoredPriorityAnalysis(
   if (v.schemaVersion !== 1) return false;
   if (typeof v.analyzedAt !== "string") return false;
   if (parsePriorityAnalysisModel(v.model) === null) return false;
+  if (v.projectId !== undefined && typeof v.projectId !== "string") return false;
   if (typeof v.analyzedSessionCount !== "number") return false;
   if (v.costUSD !== null && typeof v.costUSD !== "number") return false;
   return isPriorityAnalysisResult(v.result);

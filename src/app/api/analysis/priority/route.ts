@@ -7,6 +7,7 @@ import {
 } from "@/lib/analysis/priority-service";
 import { parsePriorityAnalysisModel } from "@/lib/analysis/priority-types";
 import { AnalysisError } from "@/lib/analysis/runner";
+import { PROJECT_ID_RE } from "@/lib/analysis/store";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,17 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const priority = await runPriorityAnalysis(model);
+    const project = (body as { project?: unknown } | null)?.project;
+    if (
+      project !== undefined &&
+      (typeof project !== "string" || !PROJECT_ID_RE.test(project))
+    ) {
+      return NextResponse.json(
+        { error: "project の形式が不正です" },
+        { status: 400 },
+      );
+    }
+    const priority = await runPriorityAnalysis(model, undefined, project);
     return NextResponse.json({ priority });
   } catch (e) {
     if (e instanceof AnalysisError) {
@@ -52,11 +63,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req?: NextRequest) {
   try {
+    const project = req?.nextUrl.searchParams.get("project") ?? null;
+    if (project !== null && !PROJECT_ID_RE.test(project)) {
+      return NextResponse.json(
+        { error: "project の形式が不正です" },
+        { status: 400 },
+      );
+    }
+    const projectId = project ?? undefined;
     return NextResponse.json({
-      priority: await getPriorityAnalysis(),
-      isAnalyzing: isPriorityAnalysisInflight(),
+      priority: await getPriorityAnalysis(projectId),
+      isAnalyzing: isPriorityAnalysisInflight(projectId),
     });
   } catch (e) {
     return errorResponse(e);
