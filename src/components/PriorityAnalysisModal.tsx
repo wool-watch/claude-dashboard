@@ -7,6 +7,8 @@ import type {
   PriorityAnalysisModel,
   StoredPriorityAnalysis,
 } from "@/lib/analysis/priority-types";
+import { PROVIDER_LABELS } from "@/lib/analysis/provider-labels";
+import type { ProviderId } from "@/lib/settings/settings";
 
 interface PriorityState {
   priority: StoredPriorityAnalysis | null;
@@ -53,6 +55,11 @@ function ModalBody({
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModel] = useState<PriorityAnalysisModel>("sonnet");
+  // アクティブプロバイダ（claude 以外ではモデル選択を出さず設定モデルで実行する）
+  const [providerInfo, setProviderInfo] = useState<{
+    provider: ProviderId;
+    model: string;
+  } | null>(null);
 
   const apiUrl =
     projectId === undefined
@@ -69,6 +76,28 @@ function ModalBody({
     },
     [apiUrl],
   );
+
+  // オープン時にアクティブプロバイダを取得（失敗時は claude 相当の表示にフォールバック）
+  useEffect(() => {
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch("/api/settings", { signal: controller.signal });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          analysisProvider: ProviderId;
+          providers: Record<ProviderId, { model: string }>;
+        };
+        setProviderInfo({
+          provider: body.analysisProvider,
+          model: body.providers[body.analysisProvider].model,
+        });
+      } catch {
+        // 取得失敗時は claude 既定のUIのまま
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   // オープン時に前回結果と実行中状態を取得
   useEffect(() => {
@@ -115,12 +144,15 @@ function ModalBody({
     setAnalyzing(true);
     setError(null);
     try {
+      // claude のみモデルを指定できる。他プロバイダは設定モデルで実行（body に含めない）
+      const isClaude = providerInfo === null || providerInfo.provider === "claude";
       const res = await fetch("/api/analysis/priority", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(
-          projectId === undefined ? { model } : { model, project: projectId },
-        ),
+        body: JSON.stringify({
+          ...(isClaude && { model }),
+          ...(projectId !== undefined && { project: projectId }),
+        }),
       });
       const body = (await res.json()) as {
         priority?: StoredPriorityAnalysis;
@@ -139,7 +171,7 @@ function ModalBody({
       setError(e instanceof Error ? e.message : "分析に失敗しました");
       setAnalyzing(false);
     }
-  }, [model, projectId]);
+  }, [model, projectId, providerInfo]);
 
   return (
     <div
@@ -182,19 +214,26 @@ function ModalBody({
           >
             {analyzing ? "分析中…（数十秒かかります）" : "分析開始"}
           </button>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value as PriorityAnalysisModel)}
-            disabled={analyzing || loading}
-            aria-label="分析モデル"
-            className="rounded-md border border-black/10 bg-transparent px-2 py-1.5 text-xs dark:border-white/15 dark:bg-neutral-900"
-          >
-            {MODEL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          {providerInfo === null || providerInfo.provider === "claude" ? (
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value as PriorityAnalysisModel)}
+              disabled={analyzing || loading}
+              aria-label="分析モデル"
+              className="rounded-md border border-black/10 bg-transparent px-2 py-1.5 text-xs dark:border-white/15 dark:bg-neutral-900"
+            >
+              {MODEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs text-black/50 dark:text-white/50">
+              使用: {PROVIDER_LABELS[providerInfo.provider]}
+              {providerInfo.model !== "" && ` / ${providerInfo.model}`}
+            </span>
+          )}
         </div>
 
         {error !== null && (
@@ -239,7 +278,8 @@ function ModalBody({
             ))}
 
             <div className="border-t border-black/10 pt-2 text-xs text-black/50 dark:border-white/15 dark:text-white/50">
-              {formatDateTimeJa(priority.analyzedAt)} 分析 ・ {priority.model} ・
+              {formatDateTimeJa(priority.analyzedAt)} 分析 ・{" "}
+              {PROVIDER_LABELS[priority.provider ?? "claude"]} / {priority.model} ・
               対象{priority.analyzedSessionCount}件
               {priority.costUSD !== null && ` ・ ${formatUSD(priority.costUSD)}`}
             </div>

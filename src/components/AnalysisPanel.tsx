@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatDateTimeJa, formatUSD } from "@/components/format";
 import { Badge, EmptyState, Skeleton } from "@/components/ui";
+import { PROVIDER_LABELS } from "@/lib/analysis/provider-labels";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 
 interface AnalysisState {
@@ -159,7 +160,7 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
     <div className="space-y-3">
       {analysis === null ? (
         <div className="space-y-2 text-center">
-          <EmptyState message="まだ分析されていません。Claude Code CLI でこのセッションのやり取りを分析し、指示の良かった点・改善点を振り返ります" />
+          <EmptyState message="まだ分析されていません。設定したAIプロバイダでこのセッションのやり取りを分析し、指示の良かった点・改善点を振り返ります" />
           <div>{analyzeButton}</div>
         </div>
       ) : (
@@ -209,7 +210,8 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
 
           <div className="flex flex-wrap items-center gap-2 border-t border-black/10 pt-2 text-xs text-black/50 dark:border-white/15 dark:text-white/50">
             <span>
-              {formatDateTimeJa(analysis.analyzedAt)} 分析 ・ {analysis.model}
+              {formatDateTimeJa(analysis.analyzedAt)} 分析 ・{" "}
+              {PROVIDER_LABELS[analysis.provider ?? "claude"]} / {analysis.model}
               {analysis.costUSD !== null && ` ・ ${formatUSD(analysis.costUSD)}`}
             </span>
             {state?.isStale === true && (

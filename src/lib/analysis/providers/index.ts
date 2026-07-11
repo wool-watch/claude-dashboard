@@ -1,4 +1,5 @@
 import { AnalysisError } from "@/lib/analysis/errors";
+import { PROVIDER_LABELS } from "@/lib/analysis/provider-labels";
 import { runClaudeJson } from "@/lib/analysis/providers/claude";
 import { runCodexJson } from "@/lib/analysis/providers/codex";
 import { runGeminiJson } from "@/lib/analysis/providers/gemini";
@@ -8,16 +9,9 @@ import type {
   ProviderRunOutcome,
 } from "@/lib/analysis/providers/types";
 import type { DashboardConfig } from "@/lib/config";
-import type { AppSettings, ProviderId } from "@/lib/settings/settings";
+import type { AppSettings } from "@/lib/settings/settings";
 
-/** UI・エラーメッセージ用の表示名 */
-export const PROVIDER_LABELS: Record<ProviderId, string> = {
-  claude: "Claude Code CLI",
-  codex: "Codex CLI",
-  gemini: "Gemini CLI",
-  lmstudio: "LM Studio",
-  openaiCompatible: "OpenAI互換API",
-};
+export { PROVIDER_LABELS } from "@/lib/analysis/provider-labels";
 
 /** アクティブプロバイダに設定されたモデル名を返す */
 export function resolveProviderModel(settings: AppSettings): string {
