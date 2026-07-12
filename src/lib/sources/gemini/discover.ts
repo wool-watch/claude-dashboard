@@ -12,24 +12,18 @@ export interface GeminiSessionFile {
 }
 
 /** メインセッションのみ対象（サブエージェント <uuid>.jsonl や checkpoint は除外） */
-const SESSION_FILE_RE = /^session-.*\.jsonl$/i;
+export const GEMINI_SESSION_FILE_RE = /^session-.*\.jsonl$/i;
 
-/**
- * Gemini CLI のチャット記録（<geminiDataDir>/<projectHash>/chats/session-*.jsonl）を走査する。
- */
-export async function discoverGeminiSessions(
-  config: DashboardConfig,
-): Promise<GeminiSessionFile[]> {
-  const out: GeminiSessionFile[] = [];
+async function scanRoot(root: string, out: GeminiSessionFile[]): Promise<void> {
   let hashes: Dirent[];
   try {
-    hashes = await fs.readdir(config.geminiDataDir, { withFileTypes: true });
+    hashes = await fs.readdir(root, { withFileTypes: true });
   } catch {
-    return out; // ディレクトリ未作成（Gemini 未使用等）
+    return; // ディレクトリ未作成（Gemini 未使用等）
   }
   for (const h of hashes) {
     if (!h.isDirectory()) continue;
-    const chatsDir = path.join(config.geminiDataDir, h.name, "chats");
+    const chatsDir = path.join(root, h.name, "chats");
     let files: string[];
     try {
       files = await fs.readdir(chatsDir);
@@ -37,14 +31,27 @@ export async function discoverGeminiSessions(
       continue;
     }
     for (const f of files) {
-      if (!SESSION_FILE_RE.test(f)) continue;
+      if (!GEMINI_SESSION_FILE_RE.test(f)) continue;
       const filePath = path.join(chatsDir, f);
       out.push({
         filePath,
         projectHash: h.name,
-        relPath: path.relative(config.geminiDataDir, filePath),
+        relPath: path.relative(root, filePath),
       });
     }
   }
+}
+
+/**
+ * Gemini CLI のチャット記録（<root>/<projectHash>/chats/session-*.jsonl）を走査する。
+ * ライブ → ダッシュボードアーカイブ（archiveDir/gemini）の順で返す
+ * （呼び出し側が先勝ちデデュープ）。
+ */
+export async function discoverGeminiSessions(
+  config: DashboardConfig,
+): Promise<GeminiSessionFile[]> {
+  const out: GeminiSessionFile[] = [];
+  await scanRoot(config.geminiDataDir, out);
+  await scanRoot(path.join(config.archiveDir, "gemini"), out);
   return out;
 }

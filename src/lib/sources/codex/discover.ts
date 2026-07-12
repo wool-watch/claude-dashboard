@@ -12,8 +12,14 @@ export interface CodexSessionFile {
   fromArchive: boolean;
 }
 
-const ROLLOUT_FILE_RE =
+export const ROLLOUT_FILE_RE =
   /^rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+
+/** rollout ファイル名から sessionId（末尾UUID）を取り出す */
+export function codexSessionIdFromFileName(fileName: string): string | null {
+  const m = ROLLOUT_FILE_RE.exec(fileName);
+  return m === null ? null : m[1].toLowerCase();
+}
 
 async function walk(
   root: string,
@@ -46,7 +52,8 @@ async function walk(
 
 /**
  * Codex の日付ツリー（YYYY/MM/DD/rollout-*.jsonl）を走査する。
- * ライブ → archived_sessions の順で返す（呼び出し側が先勝ちデデュープ）。
+ * ライブ → archived_sessions → ダッシュボードアーカイブ（archiveDir/codex）の順で
+ * 返す（呼び出し側が先勝ちデデュープ）。
  */
 export async function discoverCodexSessions(
   config: DashboardConfig,
@@ -54,5 +61,7 @@ export async function discoverCodexSessions(
   const out: CodexSessionFile[] = [];
   await walk(config.codexDataDir, config.codexDataDir, false, out);
   await walk(config.codexArchivedDir, config.codexArchivedDir, true, out);
+  const dashboardArchive = path.join(config.archiveDir, "codex");
+  await walk(dashboardArchive, dashboardArchive, true, out);
   return out;
 }
