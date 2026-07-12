@@ -230,3 +230,80 @@ describe("getSession", () => {
     expect(await getSession(UUID_B)).toBeNull();
   });
 });
+
+describe("マルチソース: Codex セッションの取り込み", () => {
+  const CODEX_UUID = "019f54b2-2728-71c0-919e-e3b8edf47689";
+  const codexJsonl = readFileSync(
+    fileURLToPath(
+      new URL("../fixtures/codex-basic-rollout.jsonl", import.meta.url),
+    ),
+    "utf8",
+  );
+
+  let codexDataDir: string;
+  let codexArchivedDir: string;
+
+  beforeEach(() => {
+    codexDataDir = mkdtempSync(path.join(os.tmpdir(), "codex-live-"));
+    codexArchivedDir = mkdtempSync(path.join(os.tmpdir(), "codex-arch-"));
+    process.env.CODEX_DATA_DIR = codexDataDir;
+    process.env.CODEX_ARCHIVED_DIR = codexArchivedDir;
+  });
+
+  afterEach(() => {
+    rmSync(codexDataDir, { recursive: true, force: true });
+    rmSync(codexArchivedDir, { recursive: true, force: true });
+  });
+
+  const writeCodexFile = (root: string, uuid: string): string => {
+    const dir = path.join(root, "2026", "07", "12");
+    mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `rollout-2026-07-12T05-00-06-${uuid}.jsonl`);
+    writeFileSync(filePath, codexJsonl);
+    return filePath;
+  };
+
+  it("claude と codex のセッションを合流して返す", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    writeCodexFile(codexDataDir, CODEX_UUID);
+    const sessions = await getAllSessions();
+    expect(sessions).toHaveLength(2);
+    const codex = sessions.find((s) => s.source === "codex");
+    expect(codex?.sessionId).toBe(CODEX_UUID);
+    expect(codex?.sessionKey).toBe(`codex:${CODEX_UUID}`);
+    expect(codex?.projectPath).toBe("/home/test/proj");
+    // projectId は cwd から claude と同じ規則で導出（横断プロジェクト集約のため）
+    expect(codex?.projectId).toBe("-home-test-proj");
+  });
+
+  it("getSession は sessionKey で codex セッションを解決する", async () => {
+    writeCodexFile(codexDataDir, CODEX_UUID);
+    const s = await getSession(`codex:${CODEX_UUID}`);
+    expect(s?.source).toBe("codex");
+    expect(s?.title).toBe("最初の質問");
+  });
+
+  it("getSessionFileRef は sessionKey で codex ファイルを解決する", async () => {
+    const filePath = writeCodexFile(codexDataDir, CODEX_UUID);
+    const ref = await getSessionFileRef(`codex:${CODEX_UUID}`);
+    expect(ref?.filePath).toBe(filePath);
+    expect(ref?.source).toBe("codex");
+  });
+
+  it("codex のライブと archived_sessions の同一IDはライブ優先", async () => {
+    const livePath = writeCodexFile(codexDataDir, CODEX_UUID);
+    writeCodexFile(codexArchivedDir, CODEX_UUID);
+    const sessions = await getAllSessions();
+    const codex = sessions.filter((s) => s.source === "codex");
+    expect(codex).toHaveLength(1);
+    const ref = await getSessionFileRef(`codex:${CODEX_UUID}`);
+    expect(ref?.filePath).toBe(livePath);
+  });
+
+  it("claude の getSessionFileRef は従来どおり素のUUIDで解決する", async () => {
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    const ref = await getSessionFileRef(UUID_A);
+    expect(ref?.filePath).toBe(path.join(tmpDir, "-proj-a", `${UUID_A}.jsonl`));
+    expect(ref?.source).toBe("claude");
+  });
+});

@@ -1,0 +1,12 @@
+{"timestamp":"2026-07-12T06:00:00.000Z","type":"session_meta","payload":{"id":"019f54b2-9999-71c0-919e-e3b8edf40000","timestamp":"2026-07-12T06:00:00.000Z","cwd":"/home/test/proj2","originator":"codex-tui","cli_version":"0.144.1","source":"cli","model_provider":"openai"}}
+{"timestamp":"2026-07-12T06:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-a","cwd":"/home/test/proj2","model":"gpt-5-codex","effort":"medium"}}
+{"timestamp":"2026-07-12T06:00:02.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"パッチを当ててテストして"}]}}
+{"timestamp":"2026-07-12T06:00:03.000Z","type":"response_item","payload":{"type":"function_call","id":"fc_1","call_id":"call_p1","name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\\n*** Update File: src/a.ts\\n@@\\n-old line\\n+new line\\n+another new\\n*** End Patch\"}"}}
+{"timestamp":"2026-07-12T06:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_p1","output":"{\"output\":\"Done!\",\"metadata\":{\"exit_code\":0,\"duration_seconds\":0.1}}"}}
+{"timestamp":"2026-07-12T06:00:05.000Z","type":"response_item","payload":{"type":"local_shell_call","id":"lsc_1","call_id":"call_s1","status":"completed","action":{"type":"exec","command":["bash","-lc","npm test"],"timeout_ms":60000}}}
+{"timestamp":"2026-07-12T06:00:08.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_s1","output":"{\"output\":\"1 test failed\",\"metadata\":{\"exit_code\":1,\"duration_seconds\":3.0}}"}}
+{"timestamp":"2026-07-12T06:00:08.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":500,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":520},"last_token_usage":null,"model_context_window":353400},"rate_limits":{}}}
+not a json line
+{"timestamp":"2026-07-12T06:00:09.000Z","type":"event_msg","payload":{"type":"turn_aborted","reason":"user_interrupt"}}
+{"timestamp":"2026-07-12T06:00:10.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":100,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":950},"last_token_usage":null,"model_context_window":353400},"rate_limits":{}}}
+{"timestamp":"2026-07-12T06:00:11.000Z","type":"unknown_future_type","payload":{"type":"mystery"}}

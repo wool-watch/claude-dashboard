@@ -136,3 +136,68 @@ describe("resolvePricing", () => {
     expect(r.pricing.input).toBe(5); // Opus現行
   });
 });
+
+describe("calculateCost: OpenAI（Codex）モデル", () => {
+  // cacheWrite は OpenAI に存在しないため 0（= 行合計は input+output+cacheRead）
+  const cases: Array<[model: string, expected: number]> = [
+    ["gpt-5-codex", 1.25 + 10 + 0.125], // 11.375
+    ["gpt-5.1", 11.375],
+    ["gpt-5-pro", 15 + 120 + 0], // 135
+    ["gpt-5-mini", 0.25 + 2 + 0.025], // 2.275
+    ["gpt-5-nano", 0.05 + 0.4 + 0.005], // 0.455
+  ];
+
+  it.each(cases)("%s: 既知単価（isEstimated=false）", (model, expected) => {
+    const r = calculateCost(MILLION, model);
+    expect(r.costUSD).toBeCloseTo(expected, 6);
+    expect(r.isEstimated).toBe(false);
+  });
+
+  it("未知の gpt 系（gpt-5.6-terra 等）は GPT-5 単価で推定扱い", () => {
+    const r = calculateCost(MILLION, "gpt-5.6-terra");
+    expect(r.costUSD).toBeCloseTo(11.375, 6);
+    expect(r.isEstimated).toBe(true);
+  });
+});
+
+describe("calculateCost: Gemini モデル", () => {
+  const cases: Array<[model: string, expected: number]> = [
+    ["gemini-3-pro", 2 + 12 + 0.2], // 14.2
+    ["gemini-2.5-pro", 1.25 + 10 + 0.31], // 11.56
+    ["gemini-2.5-flash", 0.3 + 2.5 + 0.075], // 2.875
+    ["gemini-2.5-flash-lite", 0.1 + 0.4 + 0.025], // 0.525
+  ];
+
+  it.each(cases)("%s: 既知単価（isEstimated=false）", (model, expected) => {
+    const r = calculateCost(MILLION, model);
+    expect(r.costUSD).toBeCloseTo(expected, 6);
+    expect(r.isEstimated).toBe(false);
+  });
+
+  it("未知の gemini 系は Gemini Pro 単価で推定扱い", () => {
+    const r = calculateCost(MILLION, "gemini-9-ultra");
+    expect(r.costUSD).toBeCloseTo(11.56, 6);
+    expect(r.isEstimated).toBe(true);
+  });
+});
+
+describe("resolvePricing: ソース別デフォルトフォールバック", () => {
+  it("どの規則にも合致しないモデルは source のフラッグシップ単価（推定扱い）", () => {
+    const codex = resolvePricing("mystery-model", "codex");
+    expect(codex.isEstimated).toBe(true);
+    expect(codex.pricing.input).toBe(1.25); // GPT-5
+
+    const gemini = resolvePricing("mystery-model", "gemini");
+    expect(gemini.isEstimated).toBe(true);
+    expect(gemini.pricing.input).toBe(1.25); // Gemini 2.5 Pro
+    expect(gemini.pricing.cacheRead).toBe(0.31);
+
+    const claude = resolvePricing("mystery-model", "claude");
+    expect(claude.isEstimated).toBe(true);
+    expect(claude.pricing.input).toBe(5); // Opus 現行（既存挙動）
+  });
+
+  it("source 省略時は claude と同じ既存挙動", () => {
+    expect(resolvePricing("mystery-model").pricing.input).toBe(5);
+  });
+});
