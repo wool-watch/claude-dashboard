@@ -53,6 +53,14 @@ export function sessionKeyToFileStem(key: string): string | null {
  * cwd を Claude Code と同じ規則で projectId へ変換する（記号を "-" に置換）。
  * 同一リポジトリを複数CLIで使った場合に /projects で1行に集約するため。
  */
+/** 外部CLI由来の sessionId をキー・ファイル名に安全な形へ丸める */
+export function sanitizeSessionId(id: string): string {
+  const cleaned = id
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/\.{2,}/g, "-");
+  return cleaned === "" ? "unknown" : cleaned;
+}
+
 export function encodeProjectId(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, "-");
 }

@@ -110,6 +110,15 @@ const GEMINI_25_PRO: ModelPricing = {
   cacheRead: 0.31,
 };
 
+/** Gemini 3 Flash は 2.5 Flash と同水準の公表単価（改定時はここを更新） */
+const GEMINI_3_FLASH: ModelPricing = {
+  input: 0.3,
+  output: 2.5,
+  cacheWrite5m: 0,
+  cacheWrite1h: 0,
+  cacheRead: 0.075,
+};
+
 const GEMINI_25_FLASH: ModelPricing = {
   input: 0.3,
   output: 2.5,
@@ -159,6 +168,7 @@ export const PRICING_TABLE: ReadonlyArray<
   ["gpt-5-", GPT5],
   // Gemini: -lite を flash より先に
   ["gemini-3-pro", GEMINI_3_PRO],
+  ["gemini-3-flash", GEMINI_3_FLASH],
   ["gemini-2.5-pro", GEMINI_25_PRO],
   ["gemini-2.5-flash-lite", GEMINI_25_FLASH_LITE],
   ["gemini-2.5-flash", GEMINI_25_FLASH],

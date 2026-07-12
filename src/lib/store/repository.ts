@@ -6,10 +6,13 @@ import { buildSession } from "@/lib/domain/session-builder";
 import { parseJsonlLines } from "@/lib/parser/jsonl";
 import { discoverCodexSessions } from "@/lib/sources/codex/discover";
 import { parseCodexRollout } from "@/lib/sources/codex/parser";
+import { discoverGeminiSessions } from "@/lib/sources/gemini/discover";
+import { parseGeminiChat } from "@/lib/sources/gemini/parser";
 import {
   encodeProjectId,
   formatSessionKey,
   parseSessionKey,
+  sanitizeSessionId,
 } from "@/lib/sources/keys";
 import type { SessionSourceId } from "@/lib/sources/types";
 import { getGlobalCache } from "@/lib/store/cache";
@@ -128,6 +131,7 @@ async function scan(): Promise<SessionDetail[]> {
   await scanClaudeRoot(config.dataDir, config, cache, sessions, livingPaths, seenSessionKeys, index);
   await scanClaudeRoot(config.archiveDir, config, cache, sessions, livingPaths, seenSessionKeys, index);
   await scanCodex(config, cache, sessions, livingPaths, seenSessionKeys, index);
+  await scanGemini(config, cache, sessions, livingPaths, seenSessionKeys, index);
 
   cache.prune(livingPaths);
   sessionIndex = index;
@@ -215,6 +219,47 @@ async function scanCodex(
       filePath: f.filePath,
       projectId: session.projectId,
       source: "codex",
+    });
+  }
+}
+
+async function scanGemini(
+  config: ReturnType<typeof getConfig>,
+  cache: ReturnType<typeof getGlobalCache>,
+  sessions: SessionDetail[],
+  livingPaths: Set<string>,
+  seenSessionKeys: Set<string>,
+  index: typeof sessionIndex,
+): Promise<void> {
+  const files = await discoverGeminiSessions(config);
+  for (const f of files) {
+    const st = await statWithinLimit(f.filePath, config);
+    if (st === null) continue;
+    // sessionId はメタデータ行由来のためパース後に確定する（キャッシュ済みなら再パース不要）
+    const session = cache.getOrParse(f.filePath, st, () => {
+      const { records, skippedLines, overrides, sessionId } = parseGeminiChat(
+        readFileSync(f.filePath, "utf8"),
+      );
+      const id = sanitizeSessionId(
+        sessionId ?? path.basename(f.filePath).replace(/\.jsonl$/i, ""),
+      );
+      const projectId =
+        overrides.projectPath !== undefined
+          ? encodeProjectId(overrides.projectPath)
+          : `gemini-${f.projectHash}`;
+      return buildSession(records, id, projectId, skippedLines, config, {
+        source: "gemini",
+        overrides,
+      });
+    });
+    if (seenSessionKeys.has(session.sessionKey)) continue;
+    livingPaths.add(f.filePath);
+    seenSessionKeys.add(session.sessionKey);
+    sessions.push(session);
+    index.set(session.sessionKey, {
+      filePath: f.filePath,
+      projectId: session.projectId,
+      source: "gemini",
     });
   }
 }
