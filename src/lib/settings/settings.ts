@@ -48,10 +48,17 @@ export interface ProviderSettingsMap {
   openaiCompatible: OpenAiCompatProviderSettings;
 }
 
+/** セッション取り込みの有効/無効（claude は常時有効のためキーを持たない） */
+export interface SourcesSettings {
+  codex: boolean;
+  gemini: boolean;
+}
+
 export interface AppSettings {
   retentionDays: RetentionDays;
   analysisProvider: ProviderId;
   providers: ProviderSettingsMap;
+  sources: SourcesSettings;
 }
 
 /** GET /api/settings が返す公開形。apiKey は hasApiKey に変換する */
@@ -61,6 +68,7 @@ export interface PublicAppSettings {
   providers: Omit<ProviderSettingsMap, "openaiCompatible"> & {
     openaiCompatible: { model: string; baseUrl: string; hasApiKey: boolean };
   };
+  sources: SourcesSettings;
 }
 
 export const RETENTION_OPTIONS: readonly RetentionDays[] = [
@@ -94,6 +102,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
       apiKey: "",
     },
   },
+  sources: { codex: true, gemini: true },
 };
 
 export function parseRetentionDays(raw: unknown): RetentionDays {
@@ -201,6 +210,14 @@ function normalizeSettings(parsed: Record<string, unknown>): AppSettings {
   for (const id of PROVIDER_IDS) {
     out.providers[id] = normalizeProvider(id, rawProviders[id]) as never;
   }
+  if (typeof parsed.sources === "object" && parsed.sources !== null) {
+    const rawSources = parsed.sources as Record<string, unknown>;
+    for (const key of ["codex", "gemini"] as const) {
+      if (typeof rawSources[key] === "boolean") {
+        out.sources[key] = rawSources[key];
+      }
+    }
+  }
   // 旧形式: トップレベル analysisModel を providers.claude.model へ移行
   // （providers.claude.model が明示されていればそちらを優先）
   const claudeRaw = rawProviders.claude;
@@ -264,7 +281,33 @@ export function toPublicSettings(settings: AppSettings): PublicAppSettings {
       lmstudio: { ...settings.providers.lmstudio },
       openaiCompatible: { ...openaiRest, hasApiKey: apiKey !== "" },
     },
+    sources: { ...settings.sources },
   };
+}
+
+/**
+ * PUT /api/settings の sources パッチを検証してマージする。
+ * @returns 1フィールドでも更新したら true
+ */
+export function applySourcesPatch(
+  settings: AppSettings,
+  rawPatch: unknown,
+): boolean {
+  if (typeof rawPatch !== "object" || rawPatch === null) {
+    throw new ApiQueryError("invalid sources patch");
+  }
+  let touched = false;
+  for (const [key, value] of Object.entries(rawPatch)) {
+    if (key !== "codex" && key !== "gemini") {
+      throw new ApiQueryError(`unknown key sources.${key}`);
+    }
+    if (typeof value !== "boolean") {
+      throw new ApiQueryError(`invalid sources.${key}: ${String(value)}`);
+    }
+    settings.sources[key] = value;
+    touched = true;
+  }
+  return touched;
 }
 
 /**

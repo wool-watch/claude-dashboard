@@ -91,9 +91,10 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
 
   const fetchState = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
-      const res = await fetch(`/api/sessions/${sessionId}/analysis`, {
-        signal,
-      });
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/analysis`,
+        { signal },
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as AnalysisState;
       setState(body);
@@ -137,7 +138,9 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
 
   const releaseFromQueue = useCallback(async () => {
     try {
-      await fetch(`/api/analysis/queue/${sessionId}`, { method: "DELETE" });
+      await fetch(`/api/analysis/queue/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+      });
     } finally {
       fetchState().catch(() => {
         // 一時的な失敗は次のポーリングに任せる
@@ -149,9 +152,10 @@ export function AnalysisPanel({ sessionId }: { sessionId: string }) {
     setAnalyzing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/analyze`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/analyze`,
+        { method: "POST" },
+      );
       const body = (await res.json()) as AnalysisState & { error?: string };
       if (res.status === 409) {
         // 別タブ等で実行中 → ポーリングで完了を待つ

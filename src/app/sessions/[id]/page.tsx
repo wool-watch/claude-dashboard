@@ -12,6 +12,7 @@ import { BackButton } from "@/components/BackButton";
 import { TurnTimeline } from "@/components/TurnTimeline";
 import { Badge, ErrorNote, Section, Skeleton } from "@/components/ui";
 import { useApi } from "@/components/use-api";
+import { SESSION_SOURCE_LABELS } from "@/lib/sources/types";
 import { type SessionDetail, totalTokens } from "@/lib/types";
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -41,12 +42,22 @@ export default function SessionDetailPage() {
         </div>
         <h1 className="text-lg font-semibold">
           {s.title ?? s.sessionId}
+          <span className="ml-2">
+            <Badge tone={s.source === "claude" ? "gray" : s.source === "codex" ? "blue" : "amber"}>
+              {SESSION_SOURCE_LABELS[s.source]}
+            </Badge>
+          </span>
           {s.costIsEstimated && (
             <span className="ml-2">
               <Badge tone="amber">推定コスト含む</Badge>
             </span>
           )}
         </h1>
+        {s.source === "gemini" && (
+          <p className="mt-1 text-[11px] text-black/40 dark:text-white/40">
+            Gemini CLI を OAuth 無料枠で利用している場合、実際の請求は発生しません（表示コストは有償API単価による推定です）
+          </p>
+        )}
         <p className="mt-1 text-xs text-black/50 dark:text-white/50">
           {s.projectPath} ・ {formatDateTimeJa(s.firstAt)} 〜{" "}
           {formatDateTimeJa(s.lastAt)}
@@ -71,7 +82,7 @@ export default function SessionDetailPage() {
       </div>
 
       <Section title="AI振り返り">
-        <AnalysisPanel sessionId={s.sessionId} />
+        <AnalysisPanel sessionId={s.sessionKey} />
       </Section>
 
       <Section title="ターン別タイムライン">

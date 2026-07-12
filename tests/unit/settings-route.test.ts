@@ -38,6 +38,7 @@ const PUBLIC_DEFAULT = {
       hasApiKey: false,
     },
   },
+  sources: { codex: true, gemini: true },
 };
 
 describe("GET /api/settings", () => {

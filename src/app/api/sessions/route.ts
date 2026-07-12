@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
 import { getAnalysisStatusMap } from "@/lib/analysis/service";
 import { ApiQueryError } from "@/lib/api/query";
+import { isSessionSourceId } from "@/lib/sources/types";
 import { getAllSessions } from "@/lib/store/repository";
 import type { SessionDetail, SessionSummary } from "@/lib/types";
 
@@ -16,6 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const project = sp.get("project");
+    const source = sp.get("source");
     const sort = sp.get("sort") ?? "lastAt";
     const order = sp.get("order") ?? "desc";
     const limitRaw = sp.get("limit");
@@ -30,6 +32,9 @@ export async function GET(req: NextRequest) {
     if (!Number.isInteger(limit) || limit <= 0) {
       throw new ApiQueryError(`invalid limit: ${limitRaw}`);
     }
+    if (source !== null && !isSessionSourceId(source)) {
+      throw new ApiQueryError(`invalid source: ${source}`);
+    }
 
     const [allSessions, statusMap] = await Promise.all([
       getAllSessions(),
@@ -38,6 +43,9 @@ export async function GET(req: NextRequest) {
     let sessions = allSessions;
     if (project !== null) {
       sessions = sessions.filter((s) => s.projectId === project);
+    }
+    if (source !== null) {
+      sessions = sessions.filter((s) => s.source === source);
     }
     const sign = order === "asc" ? 1 : -1;
     const sorted = [...sessions].sort((a, b) =>

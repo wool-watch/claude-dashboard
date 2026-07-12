@@ -390,6 +390,8 @@ describe("マルチソース: settings.sources による取り込みトグル", 
   });
 
   it("既定（設定なし）では codex も走査する", async () => {
+    // 同一ワーカー内の前テストが書いた settings.json を消して既定状態にする
+    rmSync(process.env.CLAUDE_SETTINGS_PATH as string, { force: true });
     const sessions = await getAllSessions();
     expect(sessions.some((s) => s.source === "codex")).toBe(true);
   });

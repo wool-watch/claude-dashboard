@@ -17,6 +17,7 @@ interface PublicSettings {
     lmstudio: { model: string; baseUrl: string };
     openaiCompatible: { model: string; baseUrl: string; hasApiKey: boolean };
   };
+  sources: { codex: boolean; gemini: boolean };
 }
 
 type PutFn = (patch: Record<string, unknown>) => Promise<boolean>;
@@ -184,6 +185,44 @@ function ModalBody({ onClose }: { onClose: () => void }) {
               </div>
               <p className={helpClass}>
                 保持期間より古いアーカイブは次回同期時に削除されます
+              </p>
+            </section>
+
+            <section className="border-t border-black/10 pt-3 dark:border-white/15">
+              <p className={sectionTitleClass}>セッション取り込みソース</p>
+              <div className="flex flex-col gap-1">
+                {(
+                  [
+                    { key: "codex", label: "Codex CLI", note: "~/.codex/sessions のロールアウトを取り込む" },
+                    { key: "gemini", label: "Gemini CLI", note: "~/.gemini/tmp のチャット記録を取り込む" },
+                  ] as const
+                ).map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-xs hover:bg-black/5 dark:hover:bg-white/10"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.sources[option.key]}
+                      onChange={() =>
+                        void put({
+                          sources: {
+                            [option.key]: !settings.sources[option.key],
+                          },
+                        })
+                      }
+                    />
+                    <span>{option.label}</span>
+                    <span className="text-[10px] text-black/40 dark:text-white/40">
+                      {option.note}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className={helpClass}>
+                Claude Code は常に取り込みます。Gemini CLI の記録は既定で30日後に
+                CLI 側で自動削除されるため、有効にしておくとアーカイブに保全されます。
+                これは表示・集計の対象設定であり、AI分析の実行バックエンド（下）とは別の設定です
               </p>
             </section>
 

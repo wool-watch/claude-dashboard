@@ -15,6 +15,7 @@ import {
   sanitizeSessionId,
 } from "@/lib/sources/keys";
 import type { SessionSourceId } from "@/lib/sources/types";
+import { readSettings } from "@/lib/settings/settings";
 import { getGlobalCache } from "@/lib/store/cache";
 import type { SessionDetail } from "@/lib/types";
 
@@ -121,6 +122,7 @@ async function statIndexEntry(
 async function scan(): Promise<SessionDetail[]> {
   const config = getConfig();
   const cache = getGlobalCache();
+  const settings = await readSettings(config.settingsPath);
 
   const sessions: SessionDetail[] = [];
   const livingPaths = new Set<string>();
@@ -130,8 +132,12 @@ async function scan(): Promise<SessionDetail[]> {
   // ライブを先に走査し、アーカイブは未出の sessionId のみ採用する（ライブ優先）
   await scanClaudeRoot(config.dataDir, config, cache, sessions, livingPaths, seenSessionKeys, index);
   await scanClaudeRoot(config.archiveDir, config, cache, sessions, livingPaths, seenSessionKeys, index);
-  await scanCodex(config, cache, sessions, livingPaths, seenSessionKeys, index);
-  await scanGemini(config, cache, sessions, livingPaths, seenSessionKeys, index);
+  if (settings.sources.codex) {
+    await scanCodex(config, cache, sessions, livingPaths, seenSessionKeys, index);
+  }
+  if (settings.sources.gemini) {
+    await scanGemini(config, cache, sessions, livingPaths, seenSessionKeys, index);
+  }
 
   cache.prune(livingPaths);
   sessionIndex = index;

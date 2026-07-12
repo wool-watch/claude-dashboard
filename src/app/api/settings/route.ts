@@ -4,6 +4,7 @@ import { ApiQueryError } from "@/lib/api/query";
 import { getConfig } from "@/lib/config";
 import {
   applyProvidersPatch,
+  applySourcesPatch,
   parseAnalysisProvider,
   parseRetentionDays,
   readSettings,
@@ -48,6 +49,9 @@ export async function PUT(request: Request) {
     }
     if ("providers" in patch) {
       touched = applyProvidersPatch(settings, patch.providers) || touched;
+    }
+    if ("sources" in patch) {
+      touched = applySourcesPatch(settings, patch.sources) || touched;
     }
     if (!touched) {
       throw new ApiQueryError("no valid settings keys in body");

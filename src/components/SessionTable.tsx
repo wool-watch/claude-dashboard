@@ -10,6 +10,7 @@ import {
 } from "@/components/format";
 import { Badge, EmptyState, InfoNote } from "@/components/ui";
 import type { SessionAnalysisStatus } from "@/lib/analysis/types";
+import { SESSION_SOURCE_LABELS } from "@/lib/sources/types";
 import { type SessionListItem, totalTokens } from "@/lib/types";
 
 type SortKey = "lastAt" | "cost" | "turns";
@@ -21,6 +22,12 @@ const displayNameOf = (projectPath: string): string => {
 
 /** モデルIDの表示短縮: claude-opus-4-8 → opus-4-8 */
 const shortModel = (model: string): string => model.replace(/^claude-/, "");
+
+function SourceBadge({ source }: { source: SessionListItem["source"] }) {
+  const tone =
+    source === "codex" ? "blue" : source === "gemini" ? "amber" : "gray";
+  return <Badge tone={tone}>{SESSION_SOURCE_LABELS[source]}</Badge>;
+}
 
 /** 実行中・待機中は選択不可（二重投入防止） */
 const isSelectableStatus = (status: SessionAnalysisStatus): boolean =>
@@ -82,7 +89,7 @@ export function SessionTable({
       new Set(
         sessions
           .filter((s) => isSelectableStatus(s.analysisStatus))
-          .map((s) => s.sessionId),
+          .map((s) => s.sessionKey),
       ),
     [sessions],
   );
@@ -213,6 +220,7 @@ export function SessionTable({
                 </th>
               )}
               <th className="py-2 text-left">タイトル</th>
+              <th className="py-2 text-left">ソース</th>
               <th className="py-2 text-left">プロジェクト</th>
               {header("lastAt", "最終利用", "text-left")}
               {header("turns", "ターン")}
@@ -226,7 +234,7 @@ export function SessionTable({
           <tbody>
             {sorted.map((s) => (
               <tr
-                key={s.sessionId}
+                key={s.sessionKey}
                 className="border-b border-black/5 hover:bg-black/[.03] dark:border-white/10 dark:hover:bg-white/[.05]"
               >
                 {selectable && (
@@ -235,18 +243,21 @@ export function SessionTable({
                       type="checkbox"
                       aria-label={`${s.title ?? s.sessionId.slice(0, 8)} を選択`}
                       disabled={!isSelectableStatus(s.analysisStatus)}
-                      checked={selected.has(s.sessionId)}
-                      onChange={() => toggle(s.sessionId)}
+                      checked={selected.has(s.sessionKey)}
+                      onChange={() => toggle(s.sessionKey)}
                     />
                   </td>
                 )}
                 <td className="max-w-72 truncate py-2 pr-3">
                   <Link
-                    href={`/sessions/${s.sessionId}`}
+                    href={`/sessions/${encodeURIComponent(s.sessionKey)}`}
                     className="hover:underline"
                   >
                     {s.title ?? s.sessionId.slice(0, 8)}
                   </Link>
+                </td>
+                <td className="py-2 pr-3">
+                  <SourceBadge source={s.source} />
                 </td>
                 <td className="py-2 pr-3 text-black/60 dark:text-white/60">
                   {displayNameOf(s.projectPath)}
