@@ -260,3 +260,72 @@ describe("formatMetricsForPrompt", () => {
     expect(text).toContain("キャッシュ読取比率: 80%");
   });
 });
+
+describe("computeSessionMetrics: Codex セッション（tool-semantics）", () => {
+  const build = async (name: string) => {
+    const { parseCodexRollout } = await import("@/lib/sources/codex/parser");
+    const { buildSession } = await import("@/lib/domain/session-builder");
+    const { getConfig } = await import("@/lib/config");
+    const { records, skippedLines, overrides } = parseCodexRollout(fixture(name));
+    const session = buildSession(records, "cx", "-p", skippedLines, getConfig(), {
+      source: "codex",
+      overrides,
+    });
+    return computeSessionMetrics(records, session);
+  };
+
+  it("apply_patch のパッチエンベロープから編集規模を算出する", async () => {
+    const m = await build("codex-apply-patch.jsonl");
+    expect(m.editOpCount).toBe(1);
+    expect(m.editedFileCount).toBe(1);
+    expect(m.estimatedLinesAdded).toBe(2);
+    expect(m.estimatedLinesRemoved).toBe(1);
+  });
+
+  it("shell（argv配列）のテスト実行と exit_code 失敗を検出する", async () => {
+    const m = await build("codex-apply-patch.jsonl");
+    expect(m.testRunCount).toBe(1);
+    expect(m.testFailCount).toBe(1);
+    expect(m.toolErrorCount).toBe(1);
+    expect(m.interruptionCount).toBe(1);
+  });
+
+  it("exec（JS文字列入力）の cmd からテスト実行を検出する", async () => {
+    const lines = [
+      { timestamp: "2026-07-12T09:00:00.000Z", type: "turn_context", payload: { turn_id: "t1", model: "gpt-5-codex" } },
+      { timestamp: "2026-07-12T09:00:01.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "テストして" }] } },
+      { timestamp: "2026-07-12T09:00:02.000Z", type: "response_item", payload: { type: "custom_tool_call", call_id: "c1", name: "exec", input: 'const r = await tools.exec_command({"cmd":"npx vitest run"});' } },
+      { timestamp: "2026-07-12T09:00:03.000Z", type: "response_item", payload: { type: "custom_tool_call_output", call_id: "c1", output: [{ type: "input_text", text: "ok" }] } },
+    ].map((o) => JSON.stringify(o)).join("\n");
+    const { parseCodexRollout } = await import("@/lib/sources/codex/parser");
+    const { buildSession } = await import("@/lib/domain/session-builder");
+    const { getConfig } = await import("@/lib/config");
+    const { records, skippedLines, overrides } = parseCodexRollout(lines);
+    const session = buildSession(records, "cx2", "-p", skippedLines, getConfig(), { source: "codex", overrides });
+    const m = computeSessionMetrics(records, session);
+    expect(m.testRunCount).toBe(1);
+    expect(m.testFailCount).toBe(0);
+  });
+});
+
+describe("computeSessionMetrics: Gemini セッション（tool-semantics）", () => {
+  it("write_file / run_shell_command を編集・テストとして数える", async () => {
+    const { parseGeminiChat } = await import("@/lib/sources/gemini/parser");
+    const { buildSession } = await import("@/lib/domain/session-builder");
+    const { getConfig } = await import("@/lib/config");
+    const { records, skippedLines, overrides, sessionId } = parseGeminiChat(
+      fixture("gemini-basic-chat.jsonl"),
+    );
+    const session = buildSession(records, sessionId ?? "g", "-p", skippedLines, getConfig(), {
+      source: "gemini",
+      overrides,
+    });
+    const m = computeSessionMetrics(records, session);
+    expect(m.editOpCount).toBe(1);
+    expect(m.editedFileCount).toBe(1);
+    expect(m.estimatedLinesAdded).toBe(2);
+    expect(m.testRunCount).toBe(1);
+    expect(m.testFailCount).toBe(1);
+    expect(m.toolErrorCount).toBe(1);
+  });
+});

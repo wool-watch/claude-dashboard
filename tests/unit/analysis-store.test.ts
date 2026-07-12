@@ -315,3 +315,39 @@ describe("writeQueue / readQueue", () => {
     expect(all.map((a) => a.sessionId)).toEqual([UUID_A]);
   });
 });
+
+describe("マルチソース: StoredAnalysis v3 と sessionKey ファイル名", () => {
+  const codexId = "019f54b2-2728-71c0-919e-e3b8edf47689";
+
+  it("source 付き v3 は <source>--<id>.json に保存され sessionKey で読める", async () => {
+    const a = mkStoredAnalysis(codexId, { schemaVersion: 3, source: "codex" });
+    await writeAnalysis(analysisDir, a);
+    expect(existsSync(path.join(analysisDir, `codex--${codexId}.json`))).toBe(
+      true,
+    );
+    const read = await readAnalysis(analysisDir, `codex:${codexId}`);
+    expect(read?.sessionId).toBe(codexId);
+    expect(read?.source).toBe("codex");
+  });
+
+  it("v2（source なし）は従来どおり素のUUIDで読める（後方互換）", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    const read = await readAnalysis(analysisDir, UUID_A);
+    expect(read?.schemaVersion).toBe(2);
+    expect(read?.source).toBeUndefined();
+  });
+
+  it("readAllAnalyses は両形式のファイルを拾う", async () => {
+    await writeAnalysis(analysisDir, stored(UUID_A));
+    await writeAnalysis(
+      analysisDir,
+      mkStoredAnalysis(codexId, { schemaVersion: 3, source: "gemini" }),
+    );
+    const all = await readAllAnalyses(analysisDir);
+    expect(all).toHaveLength(2);
+    expect(all.map((a) => a.source ?? "claude").sort()).toEqual([
+      "claude",
+      "gemini",
+    ]);
+  });
+});

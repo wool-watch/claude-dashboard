@@ -181,3 +181,25 @@ describe("buildTranscript: サイズ上限", () => {
     expect(t.truncated).toBe(false);
   });
 });
+
+describe("buildTranscript: マルチソースの正規化レコード", () => {
+  it("Codex ロールアウト由来のレコードからも会話を生成する（メタ注入は除外）", async () => {
+    const { parseCodexRollout } = await import("@/lib/sources/codex/parser");
+    const { records } = parseCodexRollout(fixture("codex-basic-rollout.jsonl"));
+    const t = buildTranscript(records, config());
+    expect(t.userTurnCount).toBe(2);
+    expect(t.text).toContain("[USER] 最初の質問");
+    expect(t.text).toContain("調べます");
+    expect(t.text).toContain("(使用ツール: exec)");
+    expect(t.text).not.toContain("AGENTS.md");
+  });
+
+  it("Gemini チャット由来のレコードからも会話を生成する", async () => {
+    const { parseGeminiChat } = await import("@/lib/sources/gemini/parser");
+    const { records } = parseGeminiChat(fixture("gemini-basic-chat.jsonl"));
+    const t = buildTranscript(records, config());
+    expect(t.userTurnCount).toBe(2);
+    expect(t.text).toContain("回答します");
+    expect(t.text).toContain("write_file");
+  });
+});

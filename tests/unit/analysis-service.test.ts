@@ -420,3 +420,53 @@ describe("getAnalysisStatusMap: キュー待機の反映", () => {
     await pending;
   });
 });
+
+describe("マルチソース: Codex セッションの分析", () => {
+  const CODEX_UUID = "019f54b2-2728-71c0-919e-e3b8edf47689";
+  const codexJsonl = readFileSync(
+    fileURLToPath(new URL("../fixtures/codex-basic-rollout.jsonl", import.meta.url)),
+    "utf8",
+  );
+
+  const writeCodexLive = () => {
+    const dir = path.join(baseDir, "codex-live", "2026", "07", "12");
+    mkdirSync(dir, { recursive: true });
+    process.env.CODEX_DATA_DIR = path.join(baseDir, "codex-live");
+    const filePath = path.join(dir, `rollout-2026-07-12T05-00-06-${CODEX_UUID}.jsonl`);
+    writeFileSync(filePath, codexJsonl);
+    return filePath;
+  };
+
+  it("sessionKey で分析し、v3（source付き）で保存する。プロンプトはソース名を含む", async () => {
+    writeCodexLive();
+    const prompts: string[] = [];
+    const run = vi.fn(async (prompt: string) => {
+      prompts.push(prompt);
+      return outcome;
+    });
+
+    const saved = await analyzeSession(`codex:${CODEX_UUID}`, { run });
+
+    expect(saved?.schemaVersion).toBe(3);
+    expect(saved?.sessionId).toBe(CODEX_UUID);
+    expect(saved?.source).toBe("codex");
+    expect(prompts[0]).toContain("Codex CLI のセッション");
+    expect(prompts[0]).toContain("最初の質問");
+
+    // sessionKey ファイル名で保存され、鮮度判定も sessionKey で解決できる
+    expect(
+      existsSync(path.join(baseDir, "analysis", `codex--${CODEX_UUID}.json`)),
+    ).toBe(true);
+    const status = await getAnalysisWithStaleness(`codex:${CODEX_UUID}`);
+    expect(status?.analysis?.source).toBe("codex");
+    expect(status?.isStale).toBe(false);
+  });
+
+  it("getAnalysisStatusMap は sessionKey をキーにする", async () => {
+    writeCodexLive();
+    const run = vi.fn(async () => outcome);
+    await analyzeSession(`codex:${CODEX_UUID}`, { run });
+    const map = await getAnalysisStatusMap();
+    expect(map.get(`codex:${CODEX_UUID}`)).toBe("analyzed");
+  });
+});
