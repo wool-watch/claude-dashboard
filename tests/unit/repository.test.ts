@@ -353,3 +353,44 @@ describe("マルチソース: Gemini セッションの取り込み", () => {
     expect(ref?.source).toBe("gemini");
   });
 });
+
+describe("マルチソース: settings.sources による取り込みトグル", () => {
+  const CODEX_UUID = "019f54b2-2728-71c0-919e-e3b8edf47689";
+  const codexJsonl = readFileSync(
+    fileURLToPath(new URL("../fixtures/codex-basic-rollout.jsonl", import.meta.url)),
+    "utf8",
+  );
+
+  let codexDataDir2: string;
+
+  beforeEach(() => {
+    codexDataDir2 = mkdtempSync(path.join(os.tmpdir(), "codex-toggle-"));
+    process.env.CODEX_DATA_DIR = codexDataDir2;
+    const dir = path.join(codexDataDir2, "2026", "07", "12");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, `rollout-2026-07-12T05-00-06-${CODEX_UUID}.jsonl`),
+      codexJsonl,
+    );
+  });
+
+  afterEach(() => {
+    rmSync(codexDataDir2, { recursive: true, force: true });
+  });
+
+  it("sources.codex=false なら codex を走査しない", async () => {
+    writeFileSync(
+      process.env.CLAUDE_SETTINGS_PATH as string,
+      JSON.stringify({ sources: { codex: false, gemini: true } }),
+    );
+    writeSessionFile("-proj-a", UUID_A, basicJsonl);
+    const sessions = await getAllSessions();
+    expect(sessions.map((s) => s.source)).toEqual(["claude"]);
+    expect(await getSession(`codex:${CODEX_UUID}`)).toBeNull();
+  });
+
+  it("既定（設定なし）では codex も走査する", async () => {
+    const sessions = await getAllSessions();
+    expect(sessions.some((s) => s.source === "codex")).toBe(true);
+  });
+});

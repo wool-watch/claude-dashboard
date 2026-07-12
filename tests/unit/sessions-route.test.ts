@@ -113,3 +113,47 @@ describe("GET /api/sessions の analysisStatus", () => {
     expect((await fetchStatuses()).get(UUID_A)).toBe("analyzed");
   });
 });
+
+describe("GET /api/sessions の source フィルタ", () => {
+  const CODEX_UUID = "019f54b2-2728-71c0-919e-e3b8edf47689";
+  const codexJsonl = readFileSync(
+    fileURLToPath(new URL("../fixtures/codex-basic-rollout.jsonl", import.meta.url)),
+    "utf8",
+  );
+
+  const writeCodexLive = () => {
+    const dir = path.join(baseDir, "codex-live", "2026", "07", "12");
+    mkdirSync(dir, { recursive: true });
+    process.env.CODEX_DATA_DIR = path.join(baseDir, "codex-live");
+    writeFileSync(
+      path.join(dir, `rollout-2026-07-12T05-00-06-${CODEX_UUID}.jsonl`),
+      codexJsonl,
+    );
+  };
+
+  it("?source=codex で codex セッションのみ返す（sessionKey / source 付き）", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeCodexLive();
+    const res = await getSessions(req("/api/sessions?source=codex"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      sessions: { sessionKey: string; source: string }[];
+    };
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0].source).toBe("codex");
+    expect(body.sessions[0].sessionKey).toBe(`codex:${CODEX_UUID}`);
+  });
+
+  it("source 省略時は全ソースを返す", async () => {
+    writeLive(UUID_A, basicJsonl);
+    writeCodexLive();
+    const res = await getSessions(req());
+    const body = (await res.json()) as { sessions: { source: string }[] };
+    expect(body.sessions).toHaveLength(2);
+  });
+
+  it("不正な source は 400", async () => {
+    const res = await getSessions(req("/api/sessions?source=cursor"));
+    expect(res.status).toBe(400);
+  });
+});

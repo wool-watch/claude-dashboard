@@ -292,3 +292,23 @@ describe("parseRetentionDays", () => {
     },
   );
 });
+
+describe("settings.sources（セッション取り込みトグル）", () => {
+  it("既定は codex / gemini とも有効", () => {
+    expect(DEFAULT_SETTINGS.sources).toEqual({ codex: true, gemini: true });
+  });
+
+  it("保存済みの sources を読み戻せる（不正値はフィールド単位でデフォルト）", async () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ sources: { codex: false, gemini: "oops" } }),
+    );
+    const settings = await readSettings(settingsPath);
+    expect(settings.sources).toEqual({ codex: false, gemini: true });
+  });
+
+  it("toPublicSettings は sources を含む", () => {
+    const pub = toPublicSettings(DEFAULT_SETTINGS);
+    expect(pub.sources).toEqual({ codex: true, gemini: true });
+  });
+});
