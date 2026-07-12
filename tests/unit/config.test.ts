@@ -16,6 +16,9 @@ const clearEnv = () => {
   delete process.env.CLAUDE_CLI_PATH;
   delete process.env.ANALYSIS_TIMEOUT_MS;
   delete process.env.ANALYSIS_MAX_BUDGET_USD;
+  delete process.env.CODEX_DATA_DIR;
+  delete process.env.CODEX_ARCHIVED_DIR;
+  delete process.env.GEMINI_DATA_DIR;
 };
 
 beforeEach(clearEnv);
@@ -135,6 +138,36 @@ describe("getConfig: analysisMaxBudgetUsd", () => {
   it.each(["abc", "0", "-1"])("不正値 %s は既定値にフォールバックする", (raw) => {
     process.env.ANALYSIS_MAX_BUDGET_USD = raw;
     expect(getConfig().analysisMaxBudgetUsd).toBe(1);
+  });
+});
+
+describe("getConfig: マルチCLIソースのディレクトリ", () => {
+  it("codexDataDir の既定値は ~/.codex/sessions", () => {
+    expect(getConfig().codexDataDir).toBe(
+      path.join(os.homedir(), ".codex", "sessions"),
+    );
+  });
+
+  it("codexArchivedDir の既定値は ~/.codex/archived_sessions", () => {
+    expect(getConfig().codexArchivedDir).toBe(
+      path.join(os.homedir(), ".codex", "archived_sessions"),
+    );
+  });
+
+  it("geminiDataDir の既定値は ~/.gemini/tmp", () => {
+    expect(getConfig().geminiDataDir).toBe(
+      path.join(os.homedir(), ".gemini", "tmp"),
+    );
+  });
+
+  it("環境変数で上書きできる", () => {
+    process.env.CODEX_DATA_DIR = "/tmp/codex-sessions";
+    process.env.CODEX_ARCHIVED_DIR = "/tmp/codex-archived";
+    process.env.GEMINI_DATA_DIR = "/tmp/gemini-tmp";
+    const config = getConfig();
+    expect(config.codexDataDir).toBe("/tmp/codex-sessions");
+    expect(config.codexArchivedDir).toBe("/tmp/codex-archived");
+    expect(config.geminiDataDir).toBe("/tmp/gemini-tmp");
   });
 });
 

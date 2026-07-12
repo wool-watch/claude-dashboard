@@ -163,6 +163,8 @@ export function mkSession(
   }
   return {
     sessionId,
+    sessionKey: sessionId,
+    source: "claude",
     projectId: "-proj",
     projectPath: "/home/test/proj",
     title: "テストセッション",

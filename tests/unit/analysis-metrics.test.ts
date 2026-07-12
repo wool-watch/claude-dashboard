@@ -12,6 +12,7 @@ import {
   usdPer100Lines,
   type SessionMetrics,
 } from "@/lib/analysis/metrics";
+import { parseJsonlLines } from "@/lib/parser/jsonl";
 import { emptyUsage, type SessionSummary } from "@/lib/types";
 
 const fixture = (name: string): string =>
@@ -20,8 +21,12 @@ const fixture = (name: string): string =>
     "utf8",
   );
 
+const recordsOf = (jsonl: string): unknown[] => parseJsonlLines(jsonl).records;
+
 const summaryOf = (over: Partial<SessionSummary> = {}): SessionSummary => ({
   sessionId: "s-metrics",
+  sessionKey: "s-metrics",
+  source: "claude",
   projectId: "-home-test-proj-m",
   projectPath: "/home/test/proj-m",
   title: "テスト",
@@ -47,7 +52,7 @@ const summaryOf = (over: Partial<SessionSummary> = {}): SessionSummary => ({
 });
 
 describe("computeSessionMetrics", () => {
-  const metrics = computeSessionMetrics(fixture("metrics-session.jsonl"), summaryOf());
+  const metrics = computeSessionMetrics(recordsOf(fixture("metrics-session.jsonl")), summaryOf());
 
   it("実装規模: 編集系 tool_use から件数・ファイル数・推定行数を算出（requestId 重複はデデュープ）", () => {
     expect(metrics.editOpCount).toBe(4); // Edit×2(a.ts) + Write(b.ts) + サイドチェーン Edit(side.ts)
@@ -81,8 +86,7 @@ describe("computeSessionMetrics", () => {
   });
 
   it("空セッションは全項目ゼロ", () => {
-    const empty = computeSessionMetrics(
-      "",
+    const empty = computeSessionMetrics(recordsOf(""),
       summaryOf({
         firstAt: "",
         lastAt: "",
@@ -137,7 +141,7 @@ describe("computeSessionMetrics", () => {
         isSidechain: false,
       }),
     ].join("\n");
-    const m = computeSessionMetrics(jsonl, summaryOf());
+    const m = computeSessionMetrics(recordsOf(jsonl), summaryOf());
     expect(m.editOpCount).toBe(2);
     expect(m.editedFileCount).toBe(2); // src/m.ts と nb.ipynb
     expect(m.estimatedLinesAdded).toBe(2 + 1 + 3); // a\nb, e, x\ny\nz

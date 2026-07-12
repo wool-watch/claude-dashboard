@@ -376,3 +376,43 @@ describe("buildSession: エッジケース（インラインレコード）", ()
     expect(s.skippedLines).toBe(2);
   });
 });
+
+describe("buildSession: source / sessionKey", () => {
+  it("既定は source=claude、sessionKey は素の sessionId", () => {
+    const s = build("basic-session.jsonl", "abc-session");
+    expect(s.source).toBe("claude");
+    expect(s.sessionKey).toBe("abc-session");
+  });
+
+  it("source 指定で sessionKey がプレフィックス付きになる", () => {
+    const text = readFileSync(
+      fileURLToPath(new URL("../fixtures/basic-session.jsonl", import.meta.url)),
+      "utf8",
+    );
+    const { records, skippedLines } = parseJsonlLines(text);
+    const s = buildSession(records, "abc-session", "-proj", skippedLines, getConfig(), {
+      source: "codex",
+    });
+    expect(s.source).toBe("codex");
+    expect(s.sessionKey).toBe("codex:abc-session");
+  });
+
+  it("overrides の projectPath / version / gitBranch がレコード由来より優先される", () => {
+    const text = readFileSync(
+      fileURLToPath(new URL("../fixtures/basic-session.jsonl", import.meta.url)),
+      "utf8",
+    );
+    const { records, skippedLines } = parseJsonlLines(text);
+    const s = buildSession(records, "abc-session", "-proj", skippedLines, getConfig(), {
+      source: "codex",
+      overrides: {
+        projectPath: "/override/path",
+        version: "0.144.1",
+        gitBranch: "main-override",
+      },
+    });
+    expect(s.projectPath).toBe("/override/path");
+    expect(s.version).toBe("0.144.1");
+    expect(s.gitBranch).toBe("main-override");
+  });
+});

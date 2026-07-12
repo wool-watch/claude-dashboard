@@ -15,6 +15,10 @@ beforeEach(() => {
   process.env.CLAUDE_ARCHIVE_DIR = path.join(sandbox, "archive");
   process.env.CLAUDE_ANALYSIS_DIR = path.join(sandbox, "analysis");
   process.env.CLAUDE_SETTINGS_PATH = path.join(sandbox, "settings.json");
+  // マルチCLIソース（Codex / Gemini）も実データへ触れないよう隔離する
+  process.env.CODEX_DATA_DIR = path.join(sandbox, "codex-sessions");
+  process.env.CODEX_ARCHIVED_DIR = path.join(sandbox, "codex-archived");
+  process.env.GEMINI_DATA_DIR = path.join(sandbox, "gemini-tmp");
 });
 
 afterAll(() => {
