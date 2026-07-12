@@ -1,0 +1,10 @@
+{"sessionId":"4a5b6c7d-1111-2222-3333-444455556666","projectHash":"xyz789hash","startTime":"2026-07-12T08:00:00.000Z"}
+{"id":"m1","timestamp":"2026-07-12T08:00:01.000Z","type":"user","content":"質問1"}
+{"id":"m2","timestamp":"2026-07-12T08:00:05.000Z","type":"gemini","model":"gemini-2.5-flash","content":"回答1","tokens":{"input":100,"output":10,"cached":0,"total":110}}
+broken json line
+{"id":"m3","timestamp":"2026-07-12T08:01:00.000Z","type":"user","content":"質問2（巻き戻される）"}
+{"id":"m4","timestamp":"2026-07-12T08:01:10.000Z","type":"gemini","model":"gemini-2.5-flash","content":"回答2（巻き戻される）","tokens":{"input":200,"output":20,"cached":0,"total":220}}
+{"$rewindTo":"m2"}
+{"id":"m5","timestamp":"2026-07-12T08:02:00.000Z","type":"user","content":"質問2やりなおし"}
+{"id":"m6","timestamp":"2026-07-12T08:02:10.000Z","type":"gemini","model":"gemini-2.5-flash","content":"回答2やりなおし","tokens":{"input":300,"output":30,"cached":100,"total":430}}
+{"type":"mystery_future_record","data":1}

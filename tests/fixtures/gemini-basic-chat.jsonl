@@ -1,0 +1,8 @@
+{"sessionId":"3f2b8c1d-aaaa-bbbb-cccc-0123456789ab","projectHash":"abc123hash","startTime":"2026-07-12T07:00:00.000Z","lastUpdated":"2026-07-12T07:05:00.000Z"}
+{"id":"m1","timestamp":"2026-07-12T07:00:01.000Z","type":"user","content":"最初の質問"}
+{"id":"m2","timestamp":"2026-07-12T07:00:05.000Z","type":"gemini","model":"gemini-2.5-pro","content":"回答します","thoughts":[{"subject":"考え","description":"...","timestamp":"2026-07-12T07:00:03.000Z"}],"tokens":{"input":1000,"output":50,"cached":600,"thoughts":10,"tool":0,"total":1060}}
+{"id":"m3","timestamp":"2026-07-12T07:00:10.000Z","type":"gemini","model":"gemini-2.5-pro","content":"ファイルを書き換えます","tokens":{"input":1200,"output":80,"cached":1000,"thoughts":0,"tool":0,"total":1280},"toolCalls":[{"id":"tc1","name":"write_file","args":{"file_path":"src/a.ts","content":"line1\nline2"},"status":"success","timestamp":"2026-07-12T07:00:09.000Z","result":[{"text":"ok"}]},{"id":"tc2","name":"run_shell_command","args":{"command":"npm test"},"status":"error","timestamp":"2026-07-12T07:00:09.500Z","result":[{"text":"1 failed"}]}]}
+{"$set":{"summary":"ダッシュボードの改善相談"}}
+{"id":"m4","timestamp":"2026-07-12T07:03:00.000Z","type":"info","content":"モデルを切り替えました"}
+{"id":"m5","timestamp":"2026-07-12T07:04:00.000Z","type":"user","content":[{"text":"次の質問"}]}
+{"id":"m6","timestamp":"2026-07-12T07:04:30.000Z","type":"gemini","model":"gemini-3-flash","content":["二つ目の","回答"],"tokens":{"input":2000,"output":120,"cached":1500,"thoughts":0,"tool":0,"total":2120}}

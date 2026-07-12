@@ -307,3 +307,49 @@ describe("マルチソース: Codex セッションの取り込み", () => {
     expect(ref?.source).toBe("claude");
   });
 });
+
+describe("マルチソース: Gemini セッションの取り込み", () => {
+  const GEMINI_SESSION_ID = "3f2b8c1d-aaaa-bbbb-cccc-0123456789ab";
+  const geminiJsonl = readFileSync(
+    fileURLToPath(new URL("../fixtures/gemini-basic-chat.jsonl", import.meta.url)),
+    "utf8",
+  );
+
+  let geminiDataDir: string;
+
+  beforeEach(() => {
+    geminiDataDir = mkdtempSync(path.join(os.tmpdir(), "gemini-live-"));
+    process.env.GEMINI_DATA_DIR = geminiDataDir;
+  });
+
+  afterEach(() => {
+    rmSync(geminiDataDir, { recursive: true, force: true });
+  });
+
+  const writeGeminiFile = (): string => {
+    const dir = path.join(geminiDataDir, "abc123hash", "chats");
+    mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, "session-2026-07-12T07-00-3f2b8c1d.jsonl");
+    writeFileSync(filePath, geminiJsonl);
+    return filePath;
+  };
+
+  it("メタデータの sessionId で取り込み、cwd 不明時は gemini-<hash> をprojectIdに使う", async () => {
+    writeGeminiFile();
+    const sessions = await getAllSessions();
+    const gemini = sessions.find((s) => s.source === "gemini");
+    expect(gemini?.sessionId).toBe(GEMINI_SESSION_ID);
+    expect(gemini?.sessionKey).toBe(`gemini:${GEMINI_SESSION_ID}`);
+    expect(gemini?.projectId).toBe("gemini-abc123hash");
+    expect(gemini?.title).toBe("ダッシュボードの改善相談");
+  });
+
+  it("getSession / getSessionFileRef が sessionKey で解決する", async () => {
+    const filePath = writeGeminiFile();
+    const s = await getSession(`gemini:${GEMINI_SESSION_ID}`);
+    expect(s?.source).toBe("gemini");
+    const ref = await getSessionFileRef(`gemini:${GEMINI_SESSION_ID}`);
+    expect(ref?.filePath).toBe(filePath);
+    expect(ref?.source).toBe("gemini");
+  });
+});
