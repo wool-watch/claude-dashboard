@@ -164,7 +164,7 @@ export function buildSession(
   }
 
   // ---- パス3: ターン内集計 ----
-  const turns: Turn[] = drafts.map((d) => buildTurn(d, config));
+  const turns: Turn[] = drafts.map((d) => buildTurn(d, config, source));
 
   let usage = emptyUsage();
   let costUSD = 0;
@@ -206,7 +206,11 @@ export function buildSession(
   };
 }
 
-function buildTurn(d: TurnDraft, config: DashboardConfig): Turn {
+function buildTurn(
+  d: TurnDraft,
+  config: DashboardConfig,
+  source: SessionSourceId,
+): Turn {
   // usage 計上は requestId（→ message.id → uuid）でデデュープし、最後の出現を採用
   const uniqueRequests = new Map<string, AssistantRecord>();
   const toolUses = new Map<string, string>();
@@ -238,7 +242,7 @@ function buildTurn(d: TurnDraft, config: DashboardConfig): Turn {
   let costIsEstimated = false;
   for (const [model, u] of Object.entries(perModelUsage)) {
     usage = addUsage(usage, u);
-    const c = calculateCost(u, model);
+    const c = calculateCost(u, model, source);
     costUSD += c.costUSD;
     costIsEstimated = costIsEstimated || c.isEstimated;
   }

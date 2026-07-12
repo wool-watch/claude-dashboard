@@ -1,3 +1,4 @@
+import type { SessionSourceId } from "@/lib/sources/types";
 import type { UsageTotals } from "@/lib/types";
 import { resolvePricing } from "./model-pricing";
 
@@ -5,8 +6,9 @@ import { resolvePricing } from "./model-pricing";
 export function calculateCost(
   usage: UsageTotals,
   model: string,
+  source: SessionSourceId = "claude",
 ): { costUSD: number; isEstimated: boolean } {
-  const { pricing, isEstimated } = resolvePricing(model);
+  const { pricing, isEstimated } = resolvePricing(model, source);
   const costUSD =
     (usage.inputTokens * pricing.input +
       usage.outputTokens * pricing.output +
