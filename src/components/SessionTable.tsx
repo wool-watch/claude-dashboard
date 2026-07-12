@@ -1,19 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   formatDateTimeJa,
   formatDurationJa,
   formatTokens,
   formatUSD,
 } from "@/components/format";
-import { Badge, EmptyState, InfoNote } from "@/components/ui";
+import { FilterPopover } from "@/components/FilterPopover";
+import { Badge, EmptyState, InfoNote, SearchInput } from "@/components/ui";
 import type { SessionAnalysisStatus } from "@/lib/analysis/types";
-import { SESSION_SOURCE_LABELS } from "@/lib/sources/types";
+import {
+  SESSION_SOURCE_IDS,
+  SESSION_SOURCE_LABELS,
+  type SessionSourceId,
+} from "@/lib/sources/types";
 import { type SessionListItem, totalTokens } from "@/lib/types";
-
-type SortKey = "lastAt" | "cost" | "turns";
+import {
+  filterSessions,
+  type SessionSortKey,
+  sortSessions,
+} from "@/lib/view/sessions-view";
 
 const displayNameOf = (projectPath: string): string => {
   const segments = projectPath.split("/").filter((s) => s !== "");
@@ -50,6 +58,32 @@ function AnalysisStatusBadge({ status }: { status: SessionAnalysisStatus }) {
   }
 }
 
+/** 分析ステータスの絞り込み選択肢（表示順） */
+const STATUS_OPTIONS: { id: SessionAnalysisStatus; label: string }[] = [
+  { id: "analyzed", label: "分析済み" },
+  { id: "stale", label: "再分析推奨" },
+  { id: "none", label: "未分析" },
+  { id: "queued", label: "待機中" },
+  { id: "analyzing", label: "分析中" },
+];
+
+function CheckboxItem({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap rounded px-1 py-0.5 hover:bg-black/5 dark:hover:bg-white/10">
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      {children}
+    </label>
+  );
+}
+
 export function SessionTable({
   sessions,
   selectable = false,
@@ -61,7 +95,7 @@ export function SessionTable({
   /** キュー投入成功後に呼ぶ（一覧の再取得など） */
   onQueued?: () => void;
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>("lastAt");
+  const [sortKey, setSortKey] = useState<SessionSortKey>("lastAt");
   const [desc, setDesc] = useState(true);
   const [rawSelected, setRawSelected] = useState<ReadonlySet<string>>(
     new Set(),
@@ -69,29 +103,34 @@ export function SessionTable({
   const [submitting, setSubmitting] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [queueError, setQueueError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [sources, setSources] = useState<ReadonlySet<SessionSourceId>>(
+    new Set(),
+  );
+  const [statuses, setStatuses] = useState<ReadonlySet<SessionAnalysisStatus>>(
+    new Set(),
+  );
 
-  const sorted = useMemo(() => {
-    const sign = desc ? -1 : 1;
-    return [...sessions].sort((a, b) => {
-      switch (sortKey) {
-        case "cost":
-          return sign * (a.costUSD - b.costUSD);
-        case "turns":
-          return sign * (a.turnCount - b.turnCount);
-        default:
-          return sign * a.lastAt.localeCompare(b.lastAt);
-      }
-    });
-  }, [sessions, sortKey, desc]);
+  // 絞り込み → 並べ替えの順で適用
+  const view = useMemo(
+    () =>
+      sortSessions(
+        filterSessions(sessions, { query, sources, statuses }),
+        sortKey,
+        desc ? "desc" : "asc",
+      ),
+    [sessions, query, sources, statuses, sortKey, desc],
+  );
 
+  // 一括分析の対象は表示中（フィルタ後）の選択可能な行に限る
   const selectableIds = useMemo(
     () =>
       new Set(
-        sessions
+        view
           .filter((s) => isSelectableStatus(s.analysisStatus))
           .map((s) => s.sessionKey),
       ),
-    [sessions],
+    [view],
   );
 
   // 一覧の自動更新で消えた・選択不可になった ID は選択から除外する（派生値として計算）
@@ -151,20 +190,98 @@ export function SessionTable({
     }
   };
 
-  const header = (key: SortKey, label: string, align = "text-right") => (
-    <th
-      className={`cursor-pointer select-none py-2 ${align}`}
-      onClick={() => {
-        if (sortKey === key) setDesc(!desc);
-        else {
-          setSortKey(key);
-          setDesc(true);
-        }
-      }}
-    >
-      {label}
-      {sortKey === key && <span className="ml-0.5">{desc ? "▼" : "▲"}</span>}
+  const toggleInSet = <T,>(set: ReadonlySet<T>, value: T): Set<T> => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    return next;
+  };
+
+  const hasFilter =
+    query.trim() !== "" || sources.size > 0 || statuses.size > 0;
+  const clearFilters = () => {
+    setQuery("");
+    setSources(new Set());
+    setStatuses(new Set());
+  };
+
+  const toggleSort = (key: SessionSortKey) => {
+    if (sortKey === key) setDesc(!desc);
+    else {
+      setSortKey(key);
+      setDesc(true);
+    }
+  };
+
+  // ラベル（ソート）＋ 任意の絞り込みポップオーバーを内包する見出しセル
+  const header = (
+    key: SessionSortKey | null,
+    label: string,
+    align = "text-right",
+    filter?: ReactNode,
+  ) => (
+    <th className={`whitespace-nowrap py-2 pr-3 last:pr-0 ${align}`}>
+      <span className="inline-flex items-center gap-1">
+        {key !== null ? (
+          <button
+            type="button"
+            className="inline-flex cursor-pointer select-none items-center"
+            onClick={() => toggleSort(key)}
+          >
+            {label}
+            {sortKey === key && (
+              <span className="ml-0.5">{desc ? "▼" : "▲"}</span>
+            )}
+          </button>
+        ) : (
+          <span>{label}</span>
+        )}
+        {filter}
+      </span>
     </th>
+  );
+
+  const sourceFilter = (
+    <FilterPopover label="ソース" active={sources.size > 0} align="left">
+      <div className="flex flex-col gap-0.5">
+        {SESSION_SOURCE_IDS.map((id) => (
+          <CheckboxItem
+            key={id}
+            checked={sources.has(id)}
+            onChange={() => setSources((prev) => toggleInSet(prev, id))}
+          >
+            {SESSION_SOURCE_LABELS[id]}
+          </CheckboxItem>
+        ))}
+      </div>
+    </FilterPopover>
+  );
+
+  const statusFilter = (
+    <FilterPopover label="分析" active={statuses.size > 0} align="left">
+      <div className="flex flex-col gap-0.5">
+        {STATUS_OPTIONS.map((opt) => (
+          <CheckboxItem
+            key={opt.id}
+            checked={statuses.has(opt.id)}
+            onChange={() => setStatuses((prev) => toggleInSet(prev, opt.id))}
+          >
+            {opt.label}
+          </CheckboxItem>
+        ))}
+      </div>
+    </FilterPopover>
+  );
+
+  const titleFilter = (
+    <FilterPopover label="タイトル検索" active={query.trim() !== ""} align="left">
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        placeholder="タイトル・プロジェクト・モデル"
+        className="w-60"
+      />
+    </FilterPopover>
   );
 
   return (
@@ -194,6 +311,20 @@ export function SessionTable({
           {queueError}
         </p>
       )}
+      {hasFilter && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-black/50 dark:text-white/50">
+          <span className="tabular-nums">
+            {view.length} / {sessions.length} 件
+          </span>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="underline hover:text-black/70 dark:hover:text-white/70"
+          >
+            フィルタ解除
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-black/50 dark:text-white/50">
@@ -219,20 +350,30 @@ export function SessionTable({
                   />
                 </th>
               )}
-              <th className="py-2 text-left">タイトル</th>
-              <th className="py-2 text-left">ソース</th>
-              <th className="py-2 text-left">プロジェクト</th>
+              {header("title", "タイトル", "text-left", titleFilter)}
+              {header(null, "ソース", "text-left", sourceFilter)}
+              <th className="whitespace-nowrap py-2 pr-3 text-left">プロジェクト</th>
               {header("lastAt", "最終利用", "text-left")}
               {header("turns", "ターン")}
-              <th className="py-2 text-left">モデル</th>
-              <th className="py-2 text-left">分析</th>
-              <th className="py-2 text-right">トークン</th>
+              <th className="whitespace-nowrap py-2 pr-3 text-left">モデル</th>
+              {header(null, "分析", "text-left", statusFilter)}
+              {header("tokens", "トークン")}
               {header("cost", "コスト")}
-              <th className="py-2 text-right">操作時間</th>
+              {header("activeTime", "操作時間")}
             </tr>
           </thead>
           <tbody>
-            {sorted.map((s) => (
+            {view.length === 0 && (
+              <tr>
+                <td
+                  colSpan={selectable ? 11 : 10}
+                  className="py-8 text-center text-sm text-black/40 dark:text-white/40"
+                >
+                  条件に一致するセッションがありません
+                </td>
+              </tr>
+            )}
+            {view.map((s) => (
               <tr
                 key={s.sessionKey}
                 className="border-b border-black/5 hover:bg-black/[.03] dark:border-white/10 dark:hover:bg-white/[.05]"

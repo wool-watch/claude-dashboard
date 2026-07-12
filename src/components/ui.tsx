@@ -50,6 +50,29 @@ export function Badge({
   );
 }
 
+/** 一覧のフリーテキスト検索ボックス */
+export function SearchInput({
+  value,
+  onChange,
+  placeholder = "検索…",
+  className = "w-56",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  return (
+    <input
+      type="search"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={`rounded-md border border-black/10 bg-transparent px-3 py-1.5 text-sm placeholder:text-black/30 focus:border-black/30 focus:outline-none dark:border-white/15 dark:placeholder:text-white/30 dark:focus:border-white/40 ${className}`}
+    />
+  );
+}
+
 export function EmptyState({ message = "データがありません" }: { message?: string }) {
   return (
     <p className="py-8 text-center text-sm text-black/40 dark:text-white/40">
