@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       sessions: sorted.slice(0, limit).map((s) => ({
         ...toSummary(s),
-        analysisStatus: statusMap.get(s.sessionId) ?? "none",
+        analysisStatus: statusMap.get(s.sessionKey) ?? "none",
       })),
     });
   } catch (e) {

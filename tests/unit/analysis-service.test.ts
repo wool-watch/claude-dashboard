@@ -95,13 +95,13 @@ describe("analyzeSession", () => {
     expect(prompt).toContain("[ASSISTANT] 回答1");
   });
 
-  it("schemaVersion 2 で定量メトリクスを算出・保存し、プロンプトにも注入する", async () => {
+  it("schemaVersion 3 で定量メトリクスを算出・保存し、プロンプトにも注入する", async () => {
     writeLive(UUID_A, metricsJsonl);
     const run = vi.fn(async (_prompt: string) => outcome);
 
     const saved = await analyzeSession(UUID_A, { run });
 
-    expect(saved?.schemaVersion).toBe(2);
+    expect(saved?.schemaVersion).toBe(3);
     expect(isSessionMetrics(saved?.metrics)).toBe(true);
     expect(saved?.metrics.editOpCount).toBe(4);
     expect(saved?.metrics.interruptionCount).toBe(2);
@@ -279,13 +279,13 @@ describe("旧 v1 分析データの移行（要再分析扱い）", () => {
     expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("stale");
   });
 
-  it("v1 を再分析すると v2 で上書きされ analyzed に戻る", async () => {
+  it("v1 を再分析すると v3 で上書きされ analyzed に戻る", async () => {
     writeLive(UUID_A, basicJsonl);
     writeLegacy(UUID_A);
     await analyzeSession(UUID_A, { run: async () => outcome });
     expect((await getAnalysisStatusMap()).get(UUID_A)).toBe("analyzed");
     const got = await getAnalysisWithStaleness(UUID_A);
-    expect(got?.analysis?.schemaVersion).toBe(2);
+    expect(got?.analysis?.schemaVersion).toBe(3);
     expect(got?.isStale).toBe(false);
   });
 });

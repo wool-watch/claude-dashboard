@@ -1,6 +1,7 @@
 import { isSessionMetrics, type SessionMetrics } from "@/lib/analysis/metrics";
 import type { ProviderId } from "@/lib/settings/settings";
 import { PROVIDER_IDS } from "@/lib/settings/settings";
+import { isSessionSourceId, type SessionSourceId } from "@/lib/sources/types";
 
 /** 改善点カテゴリ: 手戻り・非効率の主因ベース（行動に直結する分類） */
 export const IMPROVEMENT_CATEGORIES = [
@@ -63,8 +64,11 @@ export interface AnalysisResult {
 
 /** analysisDir に保存する形式（メタデータ + 決定論的メトリクス付き） */
 export interface StoredAnalysis {
-  schemaVersion: 2;
+  /** v2 = claude のみの旧形式（source なし）。新規保存は常に v3 */
+  schemaVersion: 2 | 3;
   sessionId: string;
+  /** セッションの取得元CLI（v2 では欠損 = claude） */
+  source?: SessionSourceId;
   projectId: string;
   analyzedAt: string;
   /** 分析に使ったモデル名（プロバイダごとに自由形式） */
@@ -119,7 +123,8 @@ export function isAnalysisResult(v: unknown): v is AnalysisResult {
 
 export function isStoredAnalysis(v: unknown): v is StoredAnalysis {
   if (!isObject(v)) return false;
-  if (v.schemaVersion !== 2) return false;
+  if (v.schemaVersion !== 2 && v.schemaVersion !== 3) return false;
+  if (v.source !== undefined && !isSessionSourceId(v.source)) return false;
   if (typeof v.sessionId !== "string") return false;
   if (typeof v.projectId !== "string") return false;
   if (typeof v.analyzedAt !== "string") return false;

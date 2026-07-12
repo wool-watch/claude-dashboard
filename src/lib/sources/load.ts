@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseJsonlLines } from "@/lib/parser/jsonl";
+import { parseCodexRollout } from "@/lib/sources/codex/parser";
+import { parseGeminiChat } from "@/lib/sources/gemini/parser";
 import type { SessionSourceId } from "@/lib/sources/types";
 
 export interface LoadedSessionRecords {
@@ -24,8 +26,14 @@ export function parseSessionContent(
   source: SessionSourceId,
 ): LoadedSessionRecords {
   switch (source) {
-    // codex / gemini のアダプタは後続マイルストーンで実装する
-    case "claude":
+    case "codex": {
+      const { records, skippedLines } = parseCodexRollout(content);
+      return { records, skippedLines };
+    }
+    case "gemini": {
+      const { records, skippedLines } = parseGeminiChat(content);
+      return { records, skippedLines };
+    }
     default:
       return parseJsonlLines(content);
   }

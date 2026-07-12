@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { errorResponse } from "@/app/api/respond";
 import { enqueueSessions, getQueueSnapshot } from "@/lib/analysis/queue";
-import { UUID_RE } from "@/lib/analysis/store";
+import { isValidSessionKey } from "@/lib/sources/keys";
 import { getAllSessions } from "@/lib/store/repository";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       !Array.isArray(sessionIds) ||
       sessionIds.length === 0 ||
       sessionIds.length > MAX_ENQUEUE ||
-      !sessionIds.every((id) => typeof id === "string" && UUID_RE.test(id))
+      !sessionIds.every((id) => typeof id === "string" && isValidSessionKey(id))
     ) {
       return NextResponse.json(
         { error: `sessionIds は UUID の配列（1〜${MAX_ENQUEUE}件）で指定してください` },

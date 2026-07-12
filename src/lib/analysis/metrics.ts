@@ -1,4 +1,8 @@
 import {
+  extractShellCommand,
+  toEditOps,
+} from "@/lib/analysis/tool-semantics";
+import {
   extractToolResults,
   extractToolUseDetails,
   extractUserText,
@@ -43,60 +47,10 @@ export interface SessionMetrics {
 export const TEST_COMMAND_RE =
   /\b(?:vitest|jest|pytest|playwright test|go test|cargo test|(?:npm|pnpm|yarn)(?: run)? test)\b/;
 
-const EDIT_TOOL_NAMES = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-
 type AnyRecord = Record<string, unknown>;
 
 const isObject = (v: unknown): v is AnyRecord =>
   typeof v === "object" && v !== null;
-
-const lineCount = (s: unknown): number =>
-  typeof s === "string" && s !== "" ? s.split("\n").length : 0;
-
-interface EditOp {
-  file: string;
-  added: number;
-  removed: number;
-}
-
-/** 編集系 tool_use の input から対象ファイルと推定行数を取り出す（未知の形は無視） */
-function toEditOp(name: string, input: unknown): EditOp | null {
-  if (!isObject(input)) return null;
-  if (name === "Edit") {
-    if (typeof input.file_path !== "string") return null;
-    return {
-      file: input.file_path,
-      added: lineCount(input.new_string),
-      removed: lineCount(input.old_string),
-    };
-  }
-  if (name === "Write") {
-    if (typeof input.file_path !== "string") return null;
-    return { file: input.file_path, added: lineCount(input.content), removed: 0 };
-  }
-  if (name === "MultiEdit") {
-    if (typeof input.file_path !== "string" || !Array.isArray(input.edits)) {
-      return null;
-    }
-    let added = 0;
-    let removed = 0;
-    for (const e of input.edits) {
-      if (!isObject(e)) continue;
-      added += lineCount(e.new_string);
-      removed += lineCount(e.old_string);
-    }
-    return { file: input.file_path, added, removed };
-  }
-  if (name === "NotebookEdit") {
-    if (typeof input.notebook_path !== "string") return null;
-    return {
-      file: input.notebook_path,
-      added: lineCount(input.new_source),
-      removed: 0,
-    };
-  }
-  return null;
-}
 
 const parseMs = (iso: string): number => {
   const ms = Date.parse(iso);
@@ -107,6 +61,7 @@ export function computeSessionMetrics(
   records: unknown[],
   session: SessionSummary,
 ): SessionMetrics {
+  const source = session.source;
   // ストリーミング重複（同一 requestId の再出力）対策: tool_use は block id、
   // tool_result は tool_use_id でユニーク化する
   const seenToolUseIds = new Set<string>();
@@ -124,21 +79,18 @@ export function computeSessionMetrics(
       for (const tu of extractToolUseDetails(rec.message.content)) {
         if (seenToolUseIds.has(tu.id)) continue;
         seenToolUseIds.add(tu.id);
-        if (
-          tu.name === "Bash" &&
-          isObject(tu.input) &&
-          typeof tu.input.command === "string" &&
-          TEST_COMMAND_RE.test(tu.input.command)
-        ) {
+        const command = extractShellCommand(source, tu.name, tu.input);
+        if (command !== null && TEST_COMMAND_RE.test(command)) {
           testToolUseIds.add(tu.id);
         }
-        if (!EDIT_TOOL_NAMES.has(tu.name)) continue;
-        const op = toEditOp(tu.name, tu.input);
-        if (!op) continue;
-        editOpCount += 1;
-        estimatedLinesAdded += op.added;
-        estimatedLinesRemoved += op.removed;
-        editsPerFile.set(op.file, (editsPerFile.get(op.file) ?? 0) + 1);
+        const ops = toEditOps(source, tu.name, tu.input);
+        if (ops.length === 0) continue;
+        editOpCount += 1; // ツール呼び出し単位（apply_patch の複数ファイルでも1回）
+        for (const op of ops) {
+          estimatedLinesAdded += op.added;
+          estimatedLinesRemoved += op.removed;
+          editsPerFile.set(op.file, (editsPerFile.get(op.file) ?? 0) + 1);
+        }
       }
       continue;
     }

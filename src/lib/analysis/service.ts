@@ -26,7 +26,9 @@ import type { DashboardConfig } from "@/lib/config";
 import { getConfig } from "@/lib/config";
 import type { AppSettings } from "@/lib/settings/settings";
 import { readSettings } from "@/lib/settings/settings";
+import { formatSessionKey } from "@/lib/sources/keys";
 import { loadSessionRecords } from "@/lib/sources/load";
+import { SESSION_SOURCE_LABELS } from "@/lib/sources/types";
 import { getSession, getSessionFileRef } from "@/lib/store/repository";
 
 export interface AnalysisWithStaleness {
@@ -56,8 +58,12 @@ function getInflightMap(): Map<string, Promise<unknown>> {
   return globalThis.__claudeDashboardAnalysisInflight;
 }
 
-function buildPrompt(transcript: string, metrics: SessionMetrics): string {
-  return `以下は Claude Code のセッション（ユーザーとアシスタントのやり取り）の記録と、記録から機械的に算出した定量メトリクスです。
+function buildPrompt(
+  transcript: string,
+  metrics: SessionMetrics,
+  sourceLabel: string,
+): string {
+  return `以下は ${sourceLabel} のセッション（ユーザーとアシスタントのやり取り）の記録と、記録から機械的に算出した定量メトリクスです。
 [USER] がユーザーの指示、[ASSISTANT] がアシスタントの応答（使用ツール付き）です。
 
 この記録を分析し、次の観点で振り返りを出力してください:
@@ -122,7 +128,7 @@ export async function analyzeSession(
     const provider = settings.analysisProvider;
     const model = settings.providers[provider].model;
     const outcome = await deps.run(
-      buildPrompt(transcript.text, metrics),
+      buildPrompt(transcript.text, metrics, SESSION_SOURCE_LABELS[session.source]),
       {
         model,
         jsonSchema: ANALYSIS_JSON_SCHEMA,
@@ -140,8 +146,9 @@ export async function analyzeSession(
     }
 
     const stored: StoredAnalysis = {
-      schemaVersion: 2,
-      sessionId,
+      schemaVersion: 3,
+      sessionId: session.sessionId,
+      source: session.source,
       projectId: ref.projectId,
       analyzedAt: new Date().toISOString(),
       model,
@@ -211,6 +218,18 @@ async function statusOfAnalysis(
   analysis: StoredAnalysis,
   config: DashboardConfig,
 ): Promise<SessionAnalysisStatus> {
+  const source = analysis.source ?? "claude";
+  if (source !== "claude") {
+    // Codex/Gemini はパス直撃で解決できないため repository のインデックスを引く
+    const ref = await getSessionFileRef(
+      formatSessionKey(source, analysis.sessionId),
+    );
+    if (ref === null) return "stale"; // セッションファイル消滅
+    const changed =
+      Math.abs(ref.mtimeMs - analysis.sourceMtimeMs) >= 2 ||
+      ref.size !== analysis.sourceSize;
+    return changed ? "stale" : "analyzed";
+  }
   for (const rootDir of [config.dataDir, config.archiveDir]) {
     const filePath = path.join(
       rootDir,
@@ -246,7 +265,11 @@ export async function getAnalysisStatusMap(): Promise<
   ]);
   const entries = await Promise.all(
     analyses.map(
-      async (a) => [a.sessionId, await statusOfAnalysis(a, config)] as const,
+      async (a) =>
+        [
+          formatSessionKey(a.source ?? "claude", a.sessionId),
+          await statusOfAnalysis(a, config),
+        ] as const,
     ),
   );
   const map = new Map<string, SessionAnalysisStatus>(entries);

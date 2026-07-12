@@ -1,4 +1,4 @@
-import { UUID_RE } from "@/lib/analysis/store";
+import { isValidSessionKey } from "@/lib/sources/keys";
 
 /** キュー項目の状態遷移: pending → running → done | failed（解除は「削除」であり状態ではない） */
 export type QueueItemState = "pending" | "running" | "done" | "failed";
@@ -39,7 +39,8 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 export function isQueueItem(v: unknown): v is QueueItem {
   if (!isObject(v)) return false;
-  if (typeof v.sessionId !== "string" || !UUID_RE.test(v.sessionId)) return false;
+  if (typeof v.sessionId !== "string" || !isValidSessionKey(v.sessionId))
+    return false;
   if (typeof v.state !== "string" || !QUEUE_ITEM_STATES.includes(v.state)) {
     return false;
   }

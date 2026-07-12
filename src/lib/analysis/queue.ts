@@ -1,7 +1,8 @@
 import type { QueueItem, StoredQueue } from "@/lib/analysis/queue-types";
 import { AnalysisError } from "@/lib/analysis/runner";
 import { analyzeSession, isAnalysisInflight } from "@/lib/analysis/service";
-import { readQueue, UUID_RE, writeQueue } from "@/lib/analysis/store";
+import { readQueue, writeQueue } from "@/lib/analysis/store";
+import { isValidSessionKey } from "@/lib/sources/keys";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 import { getConfig } from "@/lib/config";
 
@@ -71,7 +72,7 @@ export async function enqueueSessions(
   sessionIds: string[],
   deps: QueueDeps = DEFAULT_DEPS,
 ): Promise<EnqueueResult> {
-  const unique = [...new Set(sessionIds.filter((id) => UUID_RE.test(id)))];
+  const unique = [...new Set(sessionIds.filter((id) => isValidSessionKey(id)))];
   const result = await withQueueLock<EnqueueResult>(async (queue) => {
     const queued: string[] = [];
     const skipped: string[] = [];

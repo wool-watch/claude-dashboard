@@ -10,9 +10,16 @@ import type { StoredQueue } from "@/lib/analysis/queue-types";
 import { isStoredQueue } from "@/lib/analysis/queue-types";
 import type { StoredAnalysis } from "@/lib/analysis/types";
 import { isLegacyStoredAnalysis, isStoredAnalysis } from "@/lib/analysis/types";
+import {
+  fileStemToSessionKey,
+  formatSessionKey,
+  sessionKeyToFileStem,
+} from "@/lib/sources/keys";
 
 export const UUID_RE = /^[0-9a-f-]{36}$/i;
-const ANALYSIS_FILE_RE = /^[0-9a-f-]{36}\.json$/i;
+/** 分析ファイル名: <uuid>.json（claude）または <source>--<id>.json */
+const ANALYSIS_FILE_RE =
+  /^(?:[0-9a-f-]{36}|(?:codex|gemini)--[A-Za-z0-9._-]+)\.json$/i;
 /**
  * projectId（~/.claude/projects 直下のディレクトリ名）として妥当な形式。
  * クエリ等の外部入力をファイル名に使うため、パス区切りを含むものは拒否する。
@@ -38,26 +45,35 @@ async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> 
   await fs.rename(tmpPath, filePath);
 }
 
+/** StoredAnalysis の保存ファイル名 stem（source 欠損 = claude） */
+export function analysisFileStem(analysis: StoredAnalysis): string | null {
+  return sessionKeyToFileStem(
+    formatSessionKey(analysis.source ?? "claude", analysis.sessionId),
+  );
+}
+
 /** tmp に書いて rename するアトミック書き込み */
 export async function writeAnalysis(
   analysisDir: string,
   analysis: StoredAnalysis,
 ): Promise<void> {
-  await writeJsonAtomic(
-    path.join(analysisDir, `${analysis.sessionId}.json`),
-    analysis,
-  );
+  const stem = analysisFileStem(analysis);
+  if (stem === null) {
+    throw new Error(`sessionId の形式が不正です: ${analysis.sessionId}`);
+  }
+  await writeJsonAtomic(path.join(analysisDir, `${stem}.json`), analysis);
 }
 
-/** 欠損・破損・型ガード不合格は null（起動を止めない） */
+/** 欠損・破損・型ガード不合格は null（起動を止めない）。sessionKey で引く */
 export async function readAnalysis(
   analysisDir: string,
-  sessionId: string,
+  sessionKey: string,
 ): Promise<StoredAnalysis | null> {
-  if (!UUID_RE.test(sessionId)) return null;
+  const stem = sessionKeyToFileStem(sessionKey);
+  if (stem === null) return null;
   let text: string;
   try {
-    text = await fs.readFile(path.join(analysisDir, `${sessionId}.json`), "utf8");
+    text = await fs.readFile(path.join(analysisDir, `${stem}.json`), "utf8");
   } catch {
     return null;
   }
@@ -134,7 +150,9 @@ export async function readAllAnalyses(
   const out: StoredAnalysis[] = [];
   for (const file of files) {
     if (!ANALYSIS_FILE_RE.test(file)) continue;
-    const analysis = await readAnalysis(analysisDir, file.replace(/\.json$/i, ""));
+    const sessionKey = fileStemToSessionKey(file.replace(/\.json$/i, ""));
+    if (sessionKey === null) continue;
+    const analysis = await readAnalysis(analysisDir, sessionKey);
     if (analysis !== null) out.push(analysis);
   }
   return out;
@@ -175,15 +193,16 @@ export async function readLegacyAnalysisRefs(
   return out;
 }
 
-/** 指定セッションの保存ファイルが旧 v1 形式かどうか */
+/** 指定セッションの保存ファイルが旧 v1 形式かどうか（sessionKey で引く） */
 export async function isLegacyAnalysisFile(
   analysisDir: string,
-  sessionId: string,
+  sessionKey: string,
 ): Promise<boolean> {
-  if (!UUID_RE.test(sessionId)) return false;
+  const stem = sessionKeyToFileStem(sessionKey);
+  if (stem === null) return false;
   try {
     const text = await fs.readFile(
-      path.join(analysisDir, `${sessionId}.json`),
+      path.join(analysisDir, `${stem}.json`),
       "utf8",
     );
     return isLegacyStoredAnalysis(JSON.parse(text));
