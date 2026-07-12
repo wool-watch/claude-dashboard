@@ -51,4 +51,24 @@ describe("discoverGeminiSessions", () => {
     rmSync(dataDir, { recursive: true, force: true });
     expect(await discoverGeminiSessions(getConfig())).toEqual([]);
   });
+
+  it("ダッシュボードアーカイブ（archiveDir/gemini）も走査する（ライブ優先で後置）", async () => {
+    const archChats = path.join(
+      process.env.CLAUDE_ARCHIVE_DIR as string,
+      "gemini",
+      "hash-z",
+      "chats",
+    );
+    mkdirSync(archChats, { recursive: true });
+    const p = path.join(archChats, "session-2026-01-01T00-00-zzzz9999.jsonl");
+    writeFileSync(p, "{}\n");
+    const live = writeChat("hash-a", "session-2026-07-12T07-00-abcd1234.jsonl");
+    const found = await discoverGeminiSessions(getConfig());
+    expect(found.map((f) => f.filePath)).toEqual([live, p]);
+    expect(found[1].projectHash).toBe("hash-z");
+    rmSync(path.dirname(path.dirname(archChats)), {
+      recursive: true,
+      force: true,
+    }); // 同一ワーカー内の後続テストを汚さない
+  });
 });

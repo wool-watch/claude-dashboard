@@ -296,3 +296,155 @@ describe("runArchiveSync", () => {
     expect(r1.copied).toBe(1);
   });
 });
+
+// ---- マルチソース（Codex / Gemini） ----
+
+const CODEX_UUID = "019f54b2-2728-71c0-919e-e3b8edf47689";
+const CODEX_REL = path.join(
+  "2026",
+  "07",
+  "12",
+  `rollout-2026-07-12T05-00-06-${CODEX_UUID}.jsonl`,
+);
+const GEMINI_REL = path.join("hash-a", "chats", "session-2026-07-12T07-00-abcd.jsonl");
+
+let codexLiveDir: string;
+let geminiLiveDir: string;
+
+beforeEach(() => {
+  codexLiveDir = mkdtempSync(path.join(os.tmpdir(), "codex-sync-live-"));
+  geminiLiveDir = mkdtempSync(path.join(os.tmpdir(), "gemini-sync-live-"));
+  process.env.CODEX_DATA_DIR = codexLiveDir;
+  process.env.CODEX_ARCHIVED_DIR = path.join(codexLiveDir, "..none");
+  process.env.GEMINI_DATA_DIR = geminiLiveDir;
+});
+
+afterEach(() => {
+  rmSync(codexLiveDir, { recursive: true, force: true });
+  rmSync(geminiLiveDir, { recursive: true, force: true });
+});
+
+const writeAt = (root: string, relPath: string, content: string): string => {
+  const filePath = path.join(root, relPath);
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, content);
+  return filePath;
+};
+
+describe("syncArchive: マルチソースのコピーと保持期間", () => {
+  it("codex / gemini のライブを archiveDir/<source>/<relPath> へミラーする", async () => {
+    writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    writeAt(geminiLiveDir, GEMINI_REL, "gemini content\n");
+
+    const result = await sync();
+
+    expect(result.errors).toBe(0);
+    expect(result.copied).toBe(2);
+    expect(
+      readFileSync(path.join(archiveDir, "codex", CODEX_REL), "utf8"),
+    ).toBe("codex content\n");
+    expect(
+      readFileSync(path.join(archiveDir, "gemini", GEMINI_REL), "utf8"),
+    ).toBe("gemini content\n");
+  });
+
+  it("変更が無ければ2回目はコピーしない", async () => {
+    writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    await sync();
+    const result = await sync();
+    expect(result.copied).toBe(0);
+  });
+
+  it("ソース元から消えたアーカイブは保持期間切れで削除、期限内は保持する", async () => {
+    const livePath = writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    const past = new Date(Date.now() - 40 * DAY_MS);
+    utimesSync(livePath, past, past);
+    await sync();
+    rmSync(livePath);
+
+    // 期限内（retention 90日）は残る
+    let result = await sync(90);
+    expect(result.pruned).toBe(0);
+    expect(existsSync(path.join(archiveDir, "codex", CODEX_REL))).toBe(true);
+
+    // 期限切れ（retention 30日）で消える
+    result = await sync(30);
+    expect(result.pruned).toBe(1);
+    expect(existsSync(path.join(archiveDir, "codex", CODEX_REL))).toBe(false);
+  });
+
+  it("ソース元に在る限り保持期間切れでも消さない", async () => {
+    const livePath = writeAt(geminiLiveDir, GEMINI_REL, "g\n");
+    const past = new Date(Date.now() - 400 * DAY_MS);
+    utimesSync(livePath, past, past);
+    await sync();
+    utimesSync(path.join(archiveDir, "gemini", GEMINI_REL), past, past);
+
+    const result = await sync(30);
+    expect(result.pruned).toBe(0);
+    expect(existsSync(path.join(archiveDir, "gemini", GEMINI_REL))).toBe(true);
+  });
+});
+
+describe("syncArchive: 孤児分析クリーンアップ（ソース別全滅ガード）", () => {
+  const writeAnalysisFile = (stem: string) => {
+    mkdirSync(analysisDir, { recursive: true });
+    writeFileSync(path.join(analysisDir, `${stem}.json`), "{}");
+  };
+
+  it("codex セッションが1件も観測できないときは codex の分析を消さない（claude は掃除する）", async () => {
+    writeLive("-proj-a", UUID_A, "content\n");
+    writeAnalysisFile(`codex--${CODEX_UUID}`); // codex セッションは存在しない
+    writeAnalysisFile(UUID_B); // claude の孤児
+
+    const result = await sync();
+
+    expect(existsSync(path.join(analysisDir, `codex--${CODEX_UUID}.json`))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(analysisDir, `${UUID_B}.json`))).toBe(false);
+    expect(result.prunedAnalyses).toBe(1);
+  });
+
+  it("codex セッションを観測できたら codex の孤児分析を消す", async () => {
+    writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    writeAnalysisFile("codex--99999999-9999-9999-9999-999999999999");
+
+    const result = await sync();
+
+    expect(
+      existsSync(
+        path.join(analysisDir, "codex--99999999-9999-9999-9999-999999999999.json"),
+      ),
+    ).toBe(false);
+    expect(result.prunedAnalyses).toBe(1);
+  });
+
+  it("claude セッションが0件でも codex 側の掃除は独立して行われる", async () => {
+    writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    writeAnalysisFile(UUID_A); // claude の分析（セッション0件 → ガードで保持）
+    writeAnalysisFile("codex--99999999-9999-9999-9999-999999999999");
+
+    const result = await sync();
+
+    expect(existsSync(path.join(analysisDir, `${UUID_A}.json`))).toBe(true);
+    expect(
+      existsSync(
+        path.join(analysisDir, "codex--99999999-9999-9999-9999-999999999999.json"),
+      ),
+    ).toBe(false);
+    expect(result.prunedAnalyses).toBe(1);
+  });
+
+  it("生きている codex セッションの分析は消さない", async () => {
+    writeAt(codexLiveDir, CODEX_REL, "codex content\n");
+    writeAnalysisFile(`codex--${CODEX_UUID}`);
+
+    const result = await sync();
+
+    expect(existsSync(path.join(analysisDir, `codex--${CODEX_UUID}.json`))).toBe(
+      true,
+    );
+    expect(result.prunedAnalyses).toBe(0);
+  });
+});

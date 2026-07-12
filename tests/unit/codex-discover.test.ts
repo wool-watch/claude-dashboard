@@ -65,6 +65,16 @@ describe("discoverCodexSessions", () => {
     expect(found).toHaveLength(0);
   });
 
+  it("ダッシュボードアーカイブ（archiveDir/codex）も走査する", async () => {
+    const archRoot = path.join(process.env.CLAUDE_ARCHIVE_DIR as string, "codex");
+    const p = writeRollout(archRoot, "2026-01-01", UUID_B);
+    const found = await discoverCodexSessions(getConfig());
+    const hit = found.find((f) => f.sessionId === UUID_B);
+    expect(hit?.filePath).toBe(p);
+    expect(hit?.fromArchive).toBe(true);
+    rmSync(archRoot, { recursive: true, force: true }); // 同一ワーカー内の後続テストを汚さない
+  });
+
   it("ディレクトリ未作成なら空配列", async () => {
     rmSync(dataDir, { recursive: true, force: true });
     rmSync(archivedDir, { recursive: true, force: true });
