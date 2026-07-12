@@ -1,6 +1,5 @@
 import type { DashboardConfig } from "@/lib/config";
 import { isTurnTrigger } from "@/lib/domain/turns";
-import { parseJsonlLines } from "@/lib/parser/jsonl";
 import {
   extractAssistantText,
   extractToolUses,
@@ -57,10 +56,9 @@ function capTotal(text: string, maxChars: number): { text: string; truncated: bo
  * 同一リクエスト（requestId ?? message.id ?? uuid）の assistant レコードは1エントリにマージする。
  */
 export function buildTranscript(
-  rawJsonl: string,
+  records: unknown[],
   config: DashboardConfig,
 ): TranscriptResult {
-  const { records } = parseJsonlLines(rawJsonl);
   const entries: Entry[] = [];
   // 同一リクエストの assistant レコードをマージするためのエントリ参照
   const assistantByKey = new Map<string, Entry>();

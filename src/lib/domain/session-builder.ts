@@ -11,6 +11,8 @@ import {
   normalizeUsage,
 } from "@/lib/parser/records";
 import { calculateCost } from "@/lib/pricing/cost";
+import { formatSessionKey } from "@/lib/sources/keys";
+import type { SessionSourceId } from "@/lib/sources/types";
 import {
   addUsage,
   type AssistantRecord,
@@ -38,13 +40,28 @@ const HIDDEN_MODELS = new Set(["<synthetic>", "<unknown>"]);
  * 1ファイル分のレコード列を SessionDetail に構造化する。
  * sessionId はレコード内の値でなくファイル名を正とする（再開時に不一致があるため）。
  */
+/** ソース固有メタ（Codex session_meta 等）による確定値。レコード由来の推定より優先 */
+export interface SessionBuildOverrides {
+  projectPath?: string;
+  version?: string;
+  gitBranch?: string;
+}
+
+export interface SessionBuildOptions {
+  source?: SessionSourceId;
+  overrides?: SessionBuildOverrides;
+}
+
 export function buildSession(
   records: unknown[],
   sessionId: string,
   projectId: string,
   skippedLines: number,
   config: DashboardConfig,
+  options?: SessionBuildOptions,
 ): SessionDetail {
+  const source = options?.source ?? "claude";
+  const overrides = options?.overrides;
   // ---- パス1: メタ収集 ----
   const cwdCounts = new Map<string, number>();
   let version: string | null = null;
@@ -167,8 +184,10 @@ export function buildSession(
 
   return {
     sessionId,
+    sessionKey: formatSessionKey(source, sessionId),
+    source,
     projectId,
-    projectPath,
+    projectPath: overrides?.projectPath ?? projectPath,
     title,
     firstAt,
     lastAt,
@@ -180,8 +199,8 @@ export function buildSession(
     costUSD,
     costIsEstimated,
     activeTimeMs: estimateActiveTime(allTimestamps, config.idleThresholdMs),
-    version,
-    gitBranch,
+    version: overrides?.version ?? version,
+    gitBranch: overrides?.gitBranch ?? gitBranch,
     turns,
     skippedLines,
   };

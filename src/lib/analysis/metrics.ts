@@ -1,4 +1,3 @@
-import { parseJsonlLines } from "@/lib/parser/jsonl";
 import {
   extractToolResults,
   extractToolUseDetails,
@@ -105,11 +104,9 @@ const parseMs = (iso: string): number => {
 };
 
 export function computeSessionMetrics(
-  rawJsonl: string,
+  records: unknown[],
   session: SessionSummary,
 ): SessionMetrics {
-  const { records } = parseJsonlLines(rawJsonl);
-
   // ストリーミング重複（同一 requestId の再出力）対策: tool_use は block id、
   // tool_result は tool_use_id でユニーク化する
   const seenToolUseIds = new Set<string>();

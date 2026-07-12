@@ -8,6 +8,9 @@ export interface DashboardConfig {
   archiveSyncIntervalMs: number;
   analysisDir: string;
   claudeCliPath: string;
+  codexDataDir: string;
+  codexArchivedDir: string;
+  geminiDataDir: string;
   analysisTimeoutMs: number;
   analysisMaxBudgetUsd: number;
   transcriptMaxChars: number;
@@ -54,6 +57,14 @@ export function getConfig(): DashboardConfig {
       process.env.CLAUDE_ANALYSIS_DIR ??
       path.join(os.homedir(), ".claude-dashboard", "analysis"),
     claudeCliPath: process.env.CLAUDE_CLI_PATH ?? "claude",
+    codexDataDir:
+      process.env.CODEX_DATA_DIR ??
+      path.join(os.homedir(), ".codex", "sessions"),
+    codexArchivedDir:
+      process.env.CODEX_ARCHIVED_DIR ??
+      path.join(os.homedir(), ".codex", "archived_sessions"),
+    geminiDataDir:
+      process.env.GEMINI_DATA_DIR ?? path.join(os.homedir(), ".gemini", "tmp"),
     analysisTimeoutMs: positiveOr(
       process.env.ANALYSIS_TIMEOUT_MS,
       DEFAULT_ANALYSIS_TIMEOUT_MS,

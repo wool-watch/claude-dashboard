@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { runWithProvider } from "@/lib/analysis/providers";
@@ -27,6 +26,7 @@ import type { DashboardConfig } from "@/lib/config";
 import { getConfig } from "@/lib/config";
 import type { AppSettings } from "@/lib/settings/settings";
 import { readSettings } from "@/lib/settings/settings";
+import { loadSessionRecords } from "@/lib/sources/load";
 import { getSession, getSessionFileRef } from "@/lib/store/repository";
 
 export interface AnalysisWithStaleness {
@@ -108,8 +108,8 @@ export async function analyzeSession(
     const ref = await getSessionFileRef(sessionId);
     if (ref === null) return null;
 
-    const rawJsonl = readFileSync(ref.filePath, "utf8");
-    const transcript = buildTranscript(rawJsonl, config);
+    const { records } = loadSessionRecords(ref.filePath, session.source);
+    const transcript = buildTranscript(records, config);
     if (transcript.userTurnCount === 0) {
       throw new AnalysisError(
         "分析対象の会話がありません（本線のユーザー発話が0件）",
@@ -117,7 +117,7 @@ export async function analyzeSession(
       );
     }
 
-    const metrics = computeSessionMetrics(rawJsonl, session);
+    const metrics = computeSessionMetrics(records, session);
     const settings = await readSettings(config.settingsPath);
     const provider = settings.analysisProvider;
     const model = settings.providers[provider].model;

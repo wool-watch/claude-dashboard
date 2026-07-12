@@ -1,4 +1,5 @@
 import type { SessionAnalysisStatus } from "@/lib/analysis/types";
+import type { SessionSourceId } from "@/lib/sources/types";
 
 // ============ 生レコード（型ガード通過後） ============
 
@@ -81,6 +82,13 @@ export type KnownRecord =
   | AiTitleRecord
   | TurnDurationRecord;
 
+/**
+ * ソース中立の正規化レコード（内部IR）。
+ * Codex / Gemini の各アダプタは生形式をこの union へ正規化してから
+ * session-builder / metrics / transcript に渡す。永続化はしない。
+ */
+export type NormalizedRecord = KnownRecord;
+
 // ============ 正規化済みドメイン型 ============
 
 export interface UsageTotals {
@@ -119,6 +127,10 @@ export interface Turn {
 export interface SessionSummary {
   /** ファイル名（拡張子除く）を正とする */
   sessionId: string;
+  /** ソース横断で一意なキー（claude は sessionId と同一、他は "<source>:<id>"） */
+  sessionKey: string;
+  /** セッションの取得元CLI */
+  source: SessionSourceId;
   /** エンコード済ディレクトリ名 */
   projectId: string;
   /** 最頻 cwd。全欠落時は projectId をそのまま */
